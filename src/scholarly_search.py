@@ -19,7 +19,7 @@ class ScholarSearch:
         self.use_fuzzy = use_fuzzy
         self.fuzzy_threshold = fuzzy_threshold
         self.user_agent_rotator = UserAgent()
-        self.proxy_pool = FreeProxy(https=True).get_proxy_list()
+        self.proxy_pool = FreeProxy(https=True).get_proxy_list(repeat=3)
         self.current_proxy = None
         self.request_count = 0
         self.reset_threshold = random.randint(3, 7)
