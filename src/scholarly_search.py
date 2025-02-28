@@ -1,25 +1,31 @@
 import os
 import logging
+import random
+import time
 from typing import List, Dict
 from tenacity import retry, stop_after_attempt, wait_exponential
 from scholarly import scholarly
+from fp.fp import FreeProxy
+from fake_useragent import UserAgent
 import pandas as pd
 from thefuzz import fuzz
 from dotenv import load_dotenv
-import argparse
-import os
 
 load_dotenv()
-
 
 class ScholarSearch:
     def __init__(self, max_results: int = 50, use_fuzzy: bool = False, fuzzy_threshold: int = 85):
         self.max_results = max_results
         self.use_fuzzy = use_fuzzy
         self.fuzzy_threshold = fuzzy_threshold
+        self.user_agent_rotator = UserAgent()
+        self.proxy_pool = FreeProxy(https=True).get_proxy_list()
+        self.current_proxy = None
+        self.request_count = 0
+        self.reset_threshold = random.randint(3, 7)
         self._configure_logging()
         self._configure_proxy()
-        
+
     def _configure_logging(self):
         logging.basicConfig(
             filename='logs/search.log',
@@ -27,7 +33,7 @@ class ScholarSearch:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger(__name__)
-        
+
     def _configure_proxy(self):
         proxy_config = {
             'http': os.getenv('HTTP_PROXY'),
@@ -37,17 +43,49 @@ class ScholarSearch:
             scholarly.use_proxy(**proxy_config)
             self.logger.info('Proxy configuration loaded')
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    def _rotate_identity(self):
+        """Rotate IP and user agent to avoid detection"""
+        try:
+            self.current_proxy = random.choice(self.proxy_pool)
+            scholarly.use_proxy(http=self.current_proxy, https=self.current_proxy)
+        except Exception as e:
+            self.logger.warning(f"Proxy rotation failed: {str(e)}")
+            
+        scholarly.set_user_agent(self.user_agent_rotator.random)
+        self.request_count = 0
+        self.reset_threshold = random.randint(3, 7)
+        self.logger.info("Rotated identity - New User Agent & Proxy")
+
+    def _human_like_delay(self):
+        """Randomized delay patterns to mimic human behavior"""
+        delay_patterns = [
+            (1.5, 3.5),   # Short pause
+            (4.2, 7.8),   # Medium pause
+            (10.5, 15.3) # Long pause after multiple requests
+        ]
+        min_d, max_d = random.choice(delay_patterns)
+        delay = random.uniform(min_d, max_d) + random.gauss(0, 0.3)
+        time.sleep(abs(delay))
+
+    @retry(stop=stop_after_attempt(5), 
+           wait=wait_exponential(multiplier=1, min=4, max=60),
+           before_sleep=lambda _: logging.info("Retrying after CAPTCHA detection..."))
     def _search_publications(self, query: str) -> List[Dict]:
         try:
             search_results = []
+            self._human_like_delay()
+            
+            if self.request_count >= self.reset_threshold:
+                self._rotate_identity()
+
             generator = scholarly.search_pubs(query)
+            self.request_count += 1
             
             while len(search_results) < self.max_results:
                 try:
                     result = next(generator)
                     if 'CAPTCHA' in str(result).upper():
-                        raise Exception("Google CAPTCHA detected - manual intervention required")
+                        raise RuntimeError("Google CAPTCHA detected")
                     search_results.append(result)
                 except StopIteration:
                     break
@@ -55,11 +93,12 @@ class ScholarSearch:
         except Exception as e:
             self.logger.error(f"Search failed: {str(e)}")
             if 'CAPTCHA' in str(e).upper():
+                self._rotate_identity()
                 raise RuntimeError("CAPTCHA required - visit https://scholar.google.com to solve") from e
             raise
 
     def _check_duplicate(self, result: Dict, existing: pd.DataFrame) -> bool:
-        doi = result.get('bib', {}).get('doi')
+        doi = self._extract_doi(result)
         if doi and doi in existing['doi'].values:
             return True
             
@@ -77,7 +116,7 @@ class ScholarSearch:
             'title': pub['bib'].get('title', ''),
             'authors': ', '.join(pub['bib'].get('author', [])),
             'year': pub['bib'].get('year', ''),
-            'doi': pub['bib'].get('doi', ''),
+            'doi': self._extract_doi(pub),
             'url': pub.get('pub_url', '')
         } for pub in results])
 
@@ -87,8 +126,17 @@ class ScholarSearch:
         else:
             df.to_csv(output_path, index=False)
 
+    def _extract_doi(self, result):
+        """Robust DOI extraction with fallback"""
+        try:
+            if 'doi' in result.get('pub_url', ''):
+                return result['pub_url'].split('doi=')[-1]
+            return scholarly.bibtex(result).get('doi', '')
+        except Exception as e:
+            self.logger.warning(f"DOI extraction failed: {str(e)}")
+            return None
+
     def execute_search(self, query: str):
-        print(f"Searching for:\n{query}")
         existing_df = pd.read_csv('data/results.csv') if os.path.exists('data/results.csv') else pd.DataFrame()
         
         try:
@@ -97,33 +145,10 @@ class ScholarSearch:
             
             if filtered:
                 self._save_results(filtered)
-                print(f"Found {len(filtered)} new results")
                 self.logger.info(f"Saved {len(filtered)} new results")
             else:
-                print("No new unique results found")
                 self.logger.info("No new unique results found")
                 
         except Exception as e:
-            self.logger.error(f"Fatal error in search execution: {str(e)}")
-            print(f"Error: {str(e)}")
+            self.logger.error(f"Fatal error: {str(e)}")
             raise
-
-def main():
-    parser = argparse.ArgumentParser(description='Search Google Scholar publications')
-    parser.add_argument('query', type=str, help='Search query string')
-    args = parser.parse_args()
-    
-    try:
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
-        if not os.path.exists('data'):
-            os.makedirs('data')
-            
-        searcher = ScholarSearch()
-        searcher.execute_search(args.query)
-    except Exception as e:
-        print(f"Critical error: {str(e)}")
-        exit(1)
-
-if __name__ == "__main__":
-    main()
