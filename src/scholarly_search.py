@@ -6,8 +6,11 @@ from scholarly import scholarly
 import pandas as pd
 from thefuzz import fuzz
 from dotenv import load_dotenv
+import argparse
+import os
 
 load_dotenv()
+
 
 class ScholarSearch:
     def __init__(self, max_results: int = 50, use_fuzzy: bool = False, fuzzy_threshold: int = 85):
@@ -37,9 +40,22 @@ class ScholarSearch:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def _search_publications(self, query: str) -> List[Dict]:
         try:
-            return scholarly.search_pubs(query, self.max_results)
+            search_results = []
+            generator = scholarly.search_pubs(query)
+            
+            while len(search_results) < self.max_results:
+                try:
+                    result = next(generator)
+                    if 'CAPTCHA' in str(result).upper():
+                        raise Exception("Google CAPTCHA detected - manual intervention required")
+                    search_results.append(result)
+                except StopIteration:
+                    break
+            return search_results[:self.max_results]
         except Exception as e:
             self.logger.error(f"Search failed: {str(e)}")
+            if 'CAPTCHA' in str(e).upper():
+                raise RuntimeError("CAPTCHA required - visit https://scholar.google.com to solve") from e
             raise
 
     def _check_duplicate(self, result: Dict, existing: pd.DataFrame) -> bool:
@@ -49,7 +65,7 @@ class ScholarSearch:
             
         if self.use_fuzzy:
             matches = existing['title'].apply(
-                lambda x: fuzzy_match(x, result['bib']['title'], self.fuzzy_threshold)
+                lambda x: fuzz.ratio(x, result['bib']['title']) > self.fuzzy_threshold
             )
             if matches.any():
                 return True
@@ -72,6 +88,7 @@ class ScholarSearch:
             df.to_csv(output_path, index=False)
 
     def execute_search(self, query: str):
+        print(f"Searching for:\n{query}")
         existing_df = pd.read_csv('data/results.csv') if os.path.exists('data/results.csv') else pd.DataFrame()
         
         try:
@@ -80,10 +97,33 @@ class ScholarSearch:
             
             if filtered:
                 self._save_results(filtered)
+                print(f"Found {len(filtered)} new results")
                 self.logger.info(f"Saved {len(filtered)} new results")
             else:
+                print("No new unique results found")
                 self.logger.info("No new unique results found")
                 
         except Exception as e:
             self.logger.error(f"Fatal error in search execution: {str(e)}")
+            print(f"Error: {str(e)}")
             raise
+
+def main():
+    parser = argparse.ArgumentParser(description='Search Google Scholar publications')
+    parser.add_argument('query', type=str, help='Search query string')
+    args = parser.parse_args()
+    
+    try:
+        if not os.path.exists('logs'):
+            os.makedirs('logs')
+        if not os.path.exists('data'):
+            os.makedirs('data')
+            
+        searcher = ScholarSearch()
+        searcher.execute_search(args.query)
+    except Exception as e:
+        print(f"Critical error: {str(e)}")
+        exit(1)
+
+if __name__ == "__main__":
+    main()

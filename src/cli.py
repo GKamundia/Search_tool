@@ -1,5 +1,5 @@
 import argparse
-from typing import Optional
+import os
 from scholarly_search import ScholarSearch
 
 def main():
@@ -15,12 +15,22 @@ def main():
 
     args = parser.parse_args()
     
-    searcher = ScholarSearch(
-        max_results=args.max_results,
-        use_fuzzy=args.use_fuzzy,
-        fuzzy_threshold=args.fuzzy_threshold
-    )
-    searcher.execute_search(args.query)
+    try:
+        # Create required directories
+        if not os.path.exists('logs'):
+            os.makedirs('logs')
+        if not os.path.exists('data'):
+            os.makedirs('data')
+            
+        searcher = ScholarSearch(
+            max_results=args.max_results,
+            use_fuzzy=args.use_fuzzy,
+            fuzzy_threshold=args.fuzzy_threshold
+        )
+        searcher.execute_search(args.query)
+    except Exception as e:
+        print(f"Critical error: {str(e)}")
+        exit(1)
 
 if __name__ == "__main__":
     main()
