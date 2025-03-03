@@ -1,75 +1,101 @@
 {% extends "base.html" %} {% block content %}
-<form method="POST" action="/search">
-  <div class="row">
-    <!-- Google Scholar Section -->
-    <div class="col-md-6 platform-section">
-      <h4>Google Scholar</h4>
-      <div class="mb-3">
-        <label class="form-label">Title contains:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="google_title"
-          placeholder="e.g. machine learning"
-        />
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Author name:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="google_author"
-          placeholder="e.g. John Doe"
-        />
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Site/Domain:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="google_site"
-          placeholder="e.g. mit.edu"
-        />
+<div class="container mt-4">
+  <h2 class="mb-4">Advanced PubMed Search</h2>
+  <form method="POST" action="/">
+    <div class="card">
+      <div class="card-body">
+        <div id="search-terms">
+          <div class="search-term mb-3">
+            <div class="row g-2">
+              <div class="col-md-2">
+                <select class="form-select" name="boolean_operator">
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                  <option value="NOT">NOT</option>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <input
+                  type="text"
+                  class="form-control"
+                  name="term"
+                  placeholder="Search term (use * for wildcard)"
+                />
+              </div>
+              <div class="col-md-3">
+                <select class="form-select" name="field">
+                  <option value="">Any Field</option>
+                  <option value="[Title]">Title</option>
+                  <option value="[Title/Abstract]">Title/Abstract</option>
+                  <option value="[Author]">Author</option>
+                  <option value="[Journal]">Journal</option>
+                </select>
+              </div>
+              <div class="col-md-2">
+                <button type="button" class="btn btn-danger remove-term">
+                  -
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button type="button" class="btn btn-secondary mt-2" id="add-term">
+          Add Search Term
+        </button>
+
+        <div class="row mt-4">
+          <div class="col-md-6">
+            <label class="form-label">Publication Date Range</label>
+            <div class="input-group">
+              <input
+                type="number"
+                class="form-control"
+                name="start_year"
+                placeholder="Start Year"
+                min="1900"
+                max="{{ current_year }}"
+              />
+              <span class="input-group-text">to</span>
+              <input
+                type="number"
+                class="form-control"
+                name="end_year"
+                placeholder="End Year"
+                min="1900"
+                max="{{ current_year }}"
+              />
+            </div>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Maximum Results</label>
+            <input
+              type="number"
+              class="form-control"
+              name="max_results"
+              value="50"
+              min="1"
+              max="1000"
+            />
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary mt-4">
+          Search PubMed
+        </button>
       </div>
     </div>
+  </form>
+</div>
 
-    <!-- PubMed Section -->
-    <div class="col-md-6 platform-section">
-      <h4>PubMed</h4>
-      <div class="mb-3">
-        <label class="form-label">Title contains:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="pubmed_title"
-          placeholder="e.g. cancer research"
-        />
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Abstract contains:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="pubmed_abstract"
-          placeholder="e.g. clinical trial"
-        />
-      </div>
-      <div class="mb-3">
-        <label class="form-label">Author name:</label>
-        <input
-          type="text"
-          class="form-control"
-          name="pubmed_author"
-          placeholder="e.g. Jane Smith"
-        />
-      </div>
-    </div>
-  </div>
-
-  <div class="d-grid gap-2">
-    <button type="submit" class="btn btn-primary btn-lg">
-      Search Academic Databases
-    </button>
-  </div>
-</form>
+<script>
+  document.getElementById("add-term").addEventListener("click", () => {
+    const newTerm = document.querySelector(".search-term").cloneNode(true);
+    newTerm.querySelector("input").value = "";
+    newTerm
+      .querySelector(".remove-term")
+      .addEventListener("click", () => newTerm.remove());
+    document.getElementById("search-terms").appendChild(newTerm);
+  });
+</script>
 {% endblock %}
