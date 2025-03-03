@@ -7,7 +7,9 @@
   </div>
 
   <div class="d-grid gap-2 mb-4">
-    <a href="/export" class="btn btn-success">Export to CSV</a>
+    <a href="{{ url_for('export_results') }}" class="btn btn-success btn-lg">
+      <i class="bi bi-file-earmark-arrow-down"></i> Export All Results to CSV
+    </a>
   </div>
 
   <div class="list-group">
@@ -25,10 +27,6 @@
       {% endif %}
     </div>
     {% endfor %}
-  </div>
-
-  <div class="d-grid gap-2 mt-4">
-    <a href="/export" class="btn btn-success">Export to CSV</a>
   </div>
 </div>
 {% endblock %}

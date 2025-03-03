@@ -1,5 +1,5 @@
 import os
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, send_file
 from src.scholarly_search import PubMedSearch
 from src.query_builder import QueryBuilder
 from dotenv import load_dotenv
@@ -21,16 +21,15 @@ def index():
             operators = request.form.getlist('boolean_operator')
             fields = request.form.getlist('field')
             
-            # Construct query from multiple terms
+            # Build query with proper PubMed syntax
+            query_parts = []
             for i, term in enumerate(terms):
                 if term.strip():
                     field = fields[i] if i < len(fields) else ''
-                    qb.add_term(term, field)
+                    query_parts.append(qb.add_term(term, field).build())
                     if i < len(operators):
                         op = operators[i]
-                        if op == 'AND': qb.AND()
-                        elif op == 'OR': qb.OR()
-                        elif op == 'NOT': qb.NOT()
+                        query_parts.append(op)
 
             # Add date filter if provided
             start_year = request.form.get('start_year')
@@ -49,6 +48,18 @@ def index():
             return render_template('error.html', error=str(e))
 
     return render_template('index.html', current_year=current_year)
+
+@app.route('/export')
+def export_results():
+    try:
+        return send_file(
+            'data/results.csv',
+            mimetype='text/csv',
+            download_name='pubmed_results.csv',
+            as_attachment=True
+        )
+    except FileNotFoundError:
+        return "No results to export", 404
 
 if __name__ == '__main__':
     app.run(debug=True)

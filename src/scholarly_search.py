@@ -13,7 +13,8 @@ class PubMedSearch:
     def __init__(self, max_results: int = 100):
         self.max_results = max_results
         self._configure_logging()
-        
+        self.existing_pmids = self._load_existing_pmids()
+
     def _configure_logging(self):
         logging.basicConfig(
             filename='logs/search.log',
