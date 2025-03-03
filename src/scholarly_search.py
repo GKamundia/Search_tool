@@ -203,6 +203,48 @@ class ScholarSearch:
             self.logger.warning(f"DOI extraction failed: {str(e)}")
             return None
 
+    def execute_advanced_search(self, google_query, pubmed_query):
+        """Search both Google Scholar and PubMed with separate queries"""
+        try:
+            g_results = self._search_publications(google_query)
+        except Exception as e:
+            self.logger.error(f"Google Scholar search failed: {str(e)}")
+            g_results = []
+            
+        try:
+            p_results = self._search_pubmed(pubmed_query)
+        except Exception as e:
+            self.logger.error(f"PubMed search failed: {str(e)}")
+            p_results = []
+            
+        combined = self._process_results(g_results + p_results)
+        return self._remove_duplicates(combined)
+
+    def _process_results(self, results):
+        """Standardize result format across platforms"""
+        processed = []
+        for res in results:
+            processed.append({
+                'title': res.get('bib', {}).get('title', res.get('title', 'Untitled')),
+                'authors': ', '.join(res.get('bib', {}).get('author', res.get('authors', []))),
+                'year': res.get('bib', {}).get('year', res.get('year', '')),
+                'doi': self._extract_doi(res),
+                'url': res.get('pub_url', res.get('url', '')),
+                'source': 'Google Scholar' if 'bib' in res else 'PubMed'
+            })
+        return processed
+
+    def _remove_duplicates(self, results):
+        """Remove duplicates across search platforms"""
+        seen = set()
+        unique = []
+        for res in results:
+            key = (res['doi'], res['title'].lower())
+            if key not in seen:
+                seen.add(key)
+                unique.append(res)
+        return unique
+
     def execute_search(self, query: str):
         existing_df = pd.read_csv('data/results.csv') if os.path.exists('data/results.csv') else pd.DataFrame()
         

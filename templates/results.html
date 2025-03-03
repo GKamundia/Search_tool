@@ -1,0 +1,41 @@
+{% extends "base.html" %} {% block content %}
+<div class="mb-4">
+  <h3>Search Results</h3>
+  <div class="alert alert-info">
+    Found <span class="results-counter">{{ google_count }}</span> Google Scholar
+    results and <span class="results-counter">{{ pubmed_count }}</span> PubMed
+    results. <span class="results-counter">{{ results|length }}</span> unique
+    records after deduplication.
+  </div>
+
+  <div class="d-grid gap-2 mb-4">
+    <a href="/export" class="btn btn-success">Export to CSV</a>
+  </div>
+
+  <div class="list-group">
+    {% for result in results %}
+    <div class="list-group-item">
+      <div class="d-flex w-100 justify-content-between">
+        <h5 class="mb-1">
+          <a href="{{ result.url }}" target="_blank">{{ result.title }}</a>
+          <span
+            class="badge bg-{{ 'primary' if result.source == 'Google Scholar' else 'success' }} source-badge"
+          >
+            {{ result.source }}
+          </span>
+        </h5>
+        <small>{{ result.year }}</small>
+      </div>
+      <p class="mb-1">{{ result.authors }}</p>
+      {% if result.doi %}
+      <small class="text-muted">DOI: {{ result.doi }}</small>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  <div class="d-grid gap-2 mt-4">
+    <a href="/export" class="btn btn-success">Export to CSV</a>
+  </div>
+</div>
+{% endblock %}

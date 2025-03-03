@@ -1,0 +1,75 @@
+{% extends "base.html" %} {% block content %}
+<form method="POST" action="/search">
+  <div class="row">
+    <!-- Google Scholar Section -->
+    <div class="col-md-6 platform-section">
+      <h4>Google Scholar</h4>
+      <div class="mb-3">
+        <label class="form-label">Title contains:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="google_title"
+          placeholder="e.g. machine learning"
+        />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Author name:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="google_author"
+          placeholder="e.g. John Doe"
+        />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Site/Domain:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="google_site"
+          placeholder="e.g. mit.edu"
+        />
+      </div>
+    </div>
+
+    <!-- PubMed Section -->
+    <div class="col-md-6 platform-section">
+      <h4>PubMed</h4>
+      <div class="mb-3">
+        <label class="form-label">Title contains:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="pubmed_title"
+          placeholder="e.g. cancer research"
+        />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Abstract contains:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="pubmed_abstract"
+          placeholder="e.g. clinical trial"
+        />
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Author name:</label>
+        <input
+          type="text"
+          class="form-control"
+          name="pubmed_author"
+          placeholder="e.g. Jane Smith"
+        />
+      </div>
+    </div>
+  </div>
+
+  <div class="d-grid gap-2">
+    <button type="submit" class="btn btn-primary btn-lg">
+      Search Academic Databases
+    </button>
+  </div>
+</form>
+{% endblock %}
