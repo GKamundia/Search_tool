@@ -1,9 +1,11 @@
 import os
+import logging
 from flask import Flask, render_template, request, send_file
 from src.scholarly_search import PubMedSearch
 from src.query_builder import QueryBuilder
 from dotenv import load_dotenv
 import datetime
+from logging.handlers import RotatingFileHandler
 
 load_dotenv()
 
@@ -43,6 +45,21 @@ def index():
             query_str = qb.build()
             results = search.search(query_str)
             search.save_to_csv(results, 'data/results.csv')
+            
+            # Log the search
+            app.logger.info(
+                'Search executed',
+                extra={
+                    'query': query_str,
+                    'terms': terms,
+                    'operators': operators,
+                    'fields': fields,
+                    'start_year': start_year,
+                    'end_year': end_year,
+                    'max_results': max_results,
+                    'result_count': len(results)
+                }
+            )
             
             return render_template('results.html', 
                                 results=results,
