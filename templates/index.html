@@ -126,10 +126,9 @@
     document.getElementById("queryPreview").textContent = buildQueryPreview();
   }
 
-  // Update preview on any input change
-  document.querySelectorAll("input, select").forEach((element) => {
-    element.addEventListener("input", updateQueryPreview);
-  });
+  // Update preview on any input change or selection
+  document.querySelector("form").addEventListener("input", updateQueryPreview);
+  document.querySelector("form").addEventListener("change", updateQueryPreview);
 
   // Initialize preview
   updateQueryPreview();
@@ -142,6 +141,11 @@
       updateQueryPreview();
     });
     document.getElementById("search-terms").appendChild(newTerm);
+    // Add event listeners to new elements
+    newTerm.querySelectorAll("input, select").forEach((element) => {
+      element.addEventListener("input", updateQueryPreview);
+      element.addEventListener("change", updateQueryPreview);
+    });
     updateQueryPreview();
   });
 </script>
