@@ -80,6 +80,13 @@
           </div>
         </div>
 
+        <div class="mt-4 card">
+          <div class="card-body">
+            <h5 class="card-title">Live Query Preview</h5>
+            <pre class="bg-dark text-white p-3 rounded" id="queryPreview"></pre>
+          </div>
+        </div>
+
         <button type="submit" class="btn btn-primary mt-4">
           Search PubMed
         </button>
@@ -89,13 +96,53 @@
 </div>
 
 <script>
+  function buildQueryPreview() {
+    let queryParts = [];
+    const terms = document.querySelectorAll('[name="term"]');
+    const operators = document.querySelectorAll('[name="boolean_operator"]');
+    const fields = document.querySelectorAll('[name="field"]');
+
+    terms.forEach((term, index) => {
+      if (term.value.trim()) {
+        let field = fields[index] ? fields[index].value : "";
+        queryParts.push(`(${term.value}${field})`);
+        if (operators[index + 1]) {
+          queryParts.push(operators[index + 1].value);
+        }
+      }
+    });
+
+    // Add date range if specified
+    const startYear = document.querySelector('[name="start_year"]').value;
+    const endYear = document.querySelector('[name="end_year"]').value;
+    if (startYear && endYear) {
+      queryParts.push(` AND (${startYear}:${endYear}[dp])`);
+    }
+
+    return queryParts.join(" ");
+  }
+
+  function updateQueryPreview() {
+    document.getElementById("queryPreview").textContent = buildQueryPreview();
+  }
+
+  // Update preview on any input change
+  document.querySelectorAll("input, select").forEach((element) => {
+    element.addEventListener("input", updateQueryPreview);
+  });
+
+  // Initialize preview
+  updateQueryPreview();
+
   document.getElementById("add-term").addEventListener("click", () => {
     const newTerm = document.querySelector(".search-term").cloneNode(true);
     newTerm.querySelector("input").value = "";
-    newTerm
-      .querySelector(".remove-term")
-      .addEventListener("click", () => newTerm.remove());
+    newTerm.querySelector(".remove-term").addEventListener("click", () => {
+      newTerm.remove();
+      updateQueryPreview();
+    });
     document.getElementById("search-terms").appendChild(newTerm);
+    updateQueryPreview();
   });
 </script>
 {% endblock %}

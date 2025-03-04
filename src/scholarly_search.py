@@ -103,3 +103,22 @@ class PubMedSearch:
         if doi := article.find("ArticleId", {"IdType": "doi"}):
             return doi.get_text()
         return ""
+
+    def save_to_csv(self, results: List[Dict], filename: str) -> None:
+        """Save results to CSV with proper path handling and error logging"""
+        try:
+            abs_path = os.path.abspath(filename)
+            os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+            df = pd.DataFrame(results)
+            
+            # Write to CSV with header only if file doesn't exist
+            df.to_csv(
+                abs_path,
+                mode='a',
+                index=False,
+                header=not os.path.exists(abs_path)
+            )
+            self.logger.info(f"Saved {len(results)} records to {abs_path}")
+        except Exception as e:
+            self.logger.error(f"Failed to save CSV: {str(e)}")
+            raise

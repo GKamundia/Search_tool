@@ -40,9 +40,13 @@ def index():
             # Execute search
             max_results = int(request.form.get('max_results', 50))
             search = PubMedSearch(max_results=max_results)
-            results = search.search(qb.build())
+            query_str = qb.build()
+            results = search.search(query_str)
+            search.save_to_csv(results, 'data/results.csv')
             
-            return render_template('results.html', results=results)
+            return render_template('results.html', 
+                                results=results,
+                                query=query_str)
             
         except Exception as e:
             return render_template('error.html', error=str(e))
@@ -53,7 +57,7 @@ def index():
 def export_results():
     try:
         return send_file(
-            'data/results.csv',
+            os.path.abspath('data/results.csv'),
             mimetype='text/csv',
             download_name='pubmed_results.csv',
             as_attachment=True
