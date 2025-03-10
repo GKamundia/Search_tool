@@ -1,13 +1,57 @@
 import os
 import logging
+import random
 from typing import List, Dict
 from tenacity import retry, stop_after_attempt, wait_exponential
 import requests
 from bs4 import BeautifulSoup
 import pandas as pd
 from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
 
 load_dotenv()
+
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+]
+
+class GlobalIndexMedicusSearch:
+    def __init__(self):
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(headless=True, slow_mo=50)
+        self.context = self.browser.new_context(
+            user_agent=random.choice(USER_AGENTS)
+        )
+        self.page = self.context.new_page()
+
+    def search(self, query: str) -> List[Dict]:
+        try:
+            self.page.goto("https://globalindexmedicus.net/")
+            self.page.fill("input[name='q']", query)
+            self.page.click("button[type='submit']")
+            self.page.wait_for_selector(".search-results", timeout=10000)
+            
+            results = []
+            items = self.page.query_selector_all(".result-item")
+            for item in items:
+                results.append({
+                    "title": item.query_selector("h3").inner_text(),
+                    "authors": item.query_selector(".authors").inner_text(),
+                    "journal": item.query_selector(".journal").inner_text(),
+                    "year": item.query_selector(".year").inner_text(),
+                    "abstract": item.query_selector(".abstract").inner_text()
+                })
+            return results
+        except Exception as e:
+            self.page.screenshot(path='logs/gim_error.png')
+            raise
+        finally:
+            self.browser.close()
+
+    def save_to_csv(self, results: List[Dict], filename: str) -> None:
+        pd.DataFrame(results).to_csv(filename, index=False)
 
 class PubMedSearch:
     def __init__(self, max_results: int = 100):
@@ -45,11 +89,6 @@ class PubMedSearch:
             self.logger.error(f"Search failed: {str(e)}")
             return []
 
-    def __init__(self, max_results: int = 100):
-        self.max_results = max_results
-        self._configure_logging()
-        self.existing_pmids = self._load_existing_pmids()
-        
     def _load_existing_pmids(self) -> set:
         """Load existing PMIDs from saved results"""
         try:
@@ -111,7 +150,6 @@ class PubMedSearch:
             os.makedirs(os.path.dirname(abs_path), exist_ok=True)
             df = pd.DataFrame(results)
             
-            # Write to CSV with header only if file doesn't exist
             df.to_csv(
                 abs_path,
                 mode='a',
