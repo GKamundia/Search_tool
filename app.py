@@ -1,33 +1,16 @@
 import os
 import logging
-from flask import Flask, render_template, request, send_file, redirect, url_for
-from src.scholarly_search import PubMedSearch, GlobalIndexMedicusSearch
+from flask import Flask, render_template, request, send_file
+from src.scholarly_search import PubMedSearch
 from src.query_builder import QueryBuilder
-from src.llm_adapter import DeepSeekAdvisor
-import datetime
 from dotenv import load_dotenv
+import datetime
 from logging.handlers import RotatingFileHandler
 
 load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret')
-
-from src.llm_adapter import DeepSeekAdvisor
-
-@app.route('/generate_queries', methods=['POST'])
-def generate_queries():
-    if request.method == 'POST':
-        user_request = request.form.get('user_request')
-        advisor = DeepSeekAdvisor()
-        try:
-            queries = advisor.generate_queries(user_request)
-            return render_template('preview.html',
-                                pubmed_query=queries.get('pubmed_query', ''),
-                                gim_query=queries.get('gim_query', ''),
-                                max_results=50)
-        except Exception as e:
-            return render_template('error.html', error=str(e))
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
@@ -86,33 +69,6 @@ def index():
             return render_template('error.html', error=str(e))
 
     return render_template('index.html', current_year=current_year)
-
-@app.route('/execute_searches', methods=['POST'])
-def execute_searches():
-    try:
-        pubmed_query = request.form.get('pubmed_query')
-        gim_query = request.form.get('gim_query')
-        max_results = int(request.form.get('max_results', 50))
-        
-        # Execute PubMed search
-        pubmed_search = PubMedSearch(max_results=max_results)
-        pubmed_results = pubmed_search.search(pubmed_query)
-        pubmed_file = f"data/pubmed_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        pubmed_search.save_to_csv(pubmed_results, pubmed_file)
-        
-        # Execute GIM search
-        gim_search = GlobalIndexMedicusSearch()
-        gim_results = gim_search.search(gim_query)
-        gim_file = f"data/gim_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-        gim_search.save_to_csv(gim_results, gim_file)
-        
-        return render_template('results.html', 
-                            results=pubmed_results + gim_results,
-                            pubmed_count=len(pubmed_results),
-                            gim_count=len(gim_results))
-        
-    except Exception as e:
-        return render_template('error.html', error=str(e))
 
 @app.route('/export')
 def export_results():
