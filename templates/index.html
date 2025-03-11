@@ -1,6 +1,6 @@
 {% extends "base.html" %} {% block content %}
 <div class="container mt-4">
-  <h2 class="mb-4">Advanced PubMed Search</h2>
+  <h2 class="mb-4">Advanced Search</h2>
   <form method="POST" action="/">
     <div class="card">
       <div class="card-body">
@@ -44,6 +44,32 @@
           Add Search Term
         </button>
 
+        <div class="mb-4">
+          <div class="form-check form-check-inline">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="pubmedCheck"
+              name="databases"
+              value="pubmed"
+              checked
+            />
+            <label class="form-check-label" for="pubmedCheck">PubMed</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input
+              class="form-check-input"
+              type="checkbox"
+              id="gimCheck"
+              name="databases"
+              value="gim"
+            />
+            <label class="form-check-label" for="gimCheck"
+              >Global Index Medicus</label
+            >
+          </div>
+        </div>
+
         <div class="row mt-4">
           <div class="col-md-6">
             <label class="form-label">Publication Date Range</label>
@@ -82,21 +108,52 @@
 
         <div class="mt-4 card">
           <div class="card-body">
-            <h5 class="card-title">Live Query Preview</h5>
-            <pre class="bg-dark text-white p-3 rounded" id="queryPreview"></pre>
+            <div class="database-query" data-database="pubmed">
+              <h5 class="card-title">PubMed Query</h5>
+              <div class="mb-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary toggle-edit"
+                  type="button"
+                >
+                  <i class="bi bi-pencil"></i> Edit
+                </button>
+              </div>
+              <pre class="bg-dark text-white p-3 rounded query-preview"></pre>
+              <textarea
+                class="form-control d-none query-editor"
+                name="pubmed_query"
+                rows="3"
+              ></textarea>
+            </div>
+
+            <div class="database-query mt-4" data-database="gim">
+              <h5 class="card-title">GIM Query</h5>
+              <div class="mb-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary toggle-edit"
+                  type="button"
+                >
+                  <i class="bi bi-pencil"></i> Edit
+                </button>
+              </div>
+              <pre class="bg-dark text-white p-3 rounded query-preview"></pre>
+              <textarea
+                class="form-control d-none query-editor"
+                name="gim_query"
+                rows="3"
+              ></textarea>
+            </div>
           </div>
         </div>
 
-        <button type="submit" class="btn btn-primary mt-4">
-          Search PubMed
-        </button>
+        <button type="submit" class="btn btn-primary mt-4">Search</button>
       </div>
     </div>
   </form>
 </div>
 
 <script>
-  function buildQueryPreview() {
+  function buildQueryPreview(database) {
     let queryParts = [];
     const terms = document.querySelectorAll('[name="term"]');
     const operators = document.querySelectorAll('[name="boolean_operator"]');
@@ -104,49 +161,87 @@
 
     terms.forEach((term, index) => {
       if (term.value.trim()) {
-        let field = fields[index] ? fields[index].value : "";
-        queryParts.push(`(${term.value}${field})`);
+        const field = fields[index]?.value || "";
+        if (database === "pubmed") {
+          queryParts.push(`(${term.value}${field})`);
+        } else {
+          queryParts.push(field ? `${field}:"${term.value}"` : term.value);
+        }
         if (operators[index + 1]) {
           queryParts.push(operators[index + 1].value);
         }
       }
     });
 
-    // Add date range if specified
     const startYear = document.querySelector('[name="start_year"]').value;
     const endYear = document.querySelector('[name="end_year"]').value;
     if (startYear && endYear) {
-      queryParts.push(` AND (${startYear}:${endYear}[dp])`);
+      if (database === "pubmed") {
+        queryParts.push(` AND (${startYear}:${endYear}[dp])`);
+      } else {
+        queryParts.push(` AND year:${startYear}-${endYear}`);
+      }
     }
 
     return queryParts.join(" ");
   }
 
-  function updateQueryPreview() {
-    document.getElementById("queryPreview").textContent = buildQueryPreview();
+  function updateQueryPreviews() {
+    document.querySelectorAll(".database-query").forEach((container) => {
+      const db = container.dataset.database;
+      const preview = container.querySelector(".query-preview");
+      const editor = container.querySelector(".query-editor");
+
+      if (!container.classList.contains("edited")) {
+        preview.textContent = buildQueryPreview(db);
+        editor.value = preview.textContent;
+      }
+    });
   }
 
-  // Update preview on any input change or selection
-  document.querySelector("form").addEventListener("input", updateQueryPreview);
-  document.querySelector("form").addEventListener("change", updateQueryPreview);
+  document.querySelectorAll(".toggle-edit").forEach((button) => {
+    button.addEventListener("click", (e) => {
+      const container = e.target.closest(".database-query");
+      const preview = container.querySelector(".query-preview");
+      const editor = container.querySelector(".query-editor");
 
-  // Initialize preview
-  updateQueryPreview();
+      preview.classList.toggle("d-none");
+      editor.classList.toggle("d-none");
+      container.classList.toggle(
+        "edited",
+        !preview.classList.contains("d-none")
+      );
+      button.querySelector("i").classList.toggle("bi-pencil");
+      button.querySelector("i").classList.toggle("bi-check");
+    });
+  });
+
+  document.querySelectorAll(".query-editor").forEach((editor) => {
+    editor.addEventListener("input", (e) => {
+      const preview = e.target.previousElementSibling;
+      preview.textContent = e.target.value;
+    });
+  });
+
+  document.querySelector("form").addEventListener("input", updateQueryPreviews);
+  document
+    .querySelector("form")
+    .addEventListener("change", updateQueryPreviews);
+  updateQueryPreviews();
 
   document.getElementById("add-term").addEventListener("click", () => {
     const newTerm = document.querySelector(".search-term").cloneNode(true);
     newTerm.querySelector("input").value = "";
     newTerm.querySelector(".remove-term").addEventListener("click", () => {
       newTerm.remove();
-      updateQueryPreview();
+      updateQueryPreviews();
     });
     document.getElementById("search-terms").appendChild(newTerm);
-    // Add event listeners to new elements
     newTerm.querySelectorAll("input, select").forEach((element) => {
-      element.addEventListener("input", updateQueryPreview);
-      element.addEventListener("change", updateQueryPreview);
+      element.addEventListener("input", updateQueryPreviews);
+      element.addEventListener("change", updateQueryPreviews);
     });
-    updateQueryPreview();
+    updateQueryPreviews();
   });
 </script>
 {% endblock %}

@@ -1,6 +1,10 @@
 import os
 import logging
+import pandas as pd
 from flask import Flask, render_template, request, send_file
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+from src.gim_search import GIMSearch
 from src.scholarly_search import PubMedSearch
 from src.query_builder import QueryBuilder
 from dotenv import load_dotenv
@@ -9,11 +13,27 @@ from logging.handlers import RotatingFileHandler
 
 load_dotenv()
 
+# Configure logging
+log_dir = 'logs'
+os.makedirs(log_dir, exist_ok=True)
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        RotatingFileHandler(
+            os.path.join(log_dir, 'search.log'),
+            maxBytes=10485760,  # 10MB
+            backupCount=5
+        ),
+        logging.StreamHandler()  # Also log to console
+    ]
+)
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret')
 
 @app.route('/', methods=['GET', 'POST'])
-def index():
+async def index():
     current_year = datetime.datetime.now().year
     if request.method == 'POST':
         try:
@@ -39,12 +59,29 @@ def index():
             if start_year and end_year:
                 qb.date_range(int(start_year), int(end_year))
 
-            # Execute search
+            # Get search parameters
             max_results = int(request.form.get('max_results', 50))
-            search = PubMedSearch(max_results=max_results)
             query_str = qb.build()
-            results = search.search(query_str)
-            search.save_to_csv(results, 'data/results.csv')
+            selected_dbs = request.form.getlist('databases')
+            
+            # Execute searches concurrently
+            results = {'pubmed': [], 'gim': []}
+            
+            if 'pubmed' in selected_dbs:
+                pubmed_search = PubMedSearch(max_results=max_results)
+                results['pubmed'] = await asyncio.to_thread(pubmed_search.search, query_str)
+                pubmed_search.save_to_csv(results['pubmed'], 'data/pubmed_results.csv')
+            
+            if 'gim' in selected_dbs:
+                async with GIMSearch(max_results=max_results) as gim_search:
+                    results['gim'] = await gim_search.search(query_str)
+                    if results['gim']:
+                        pd.DataFrame(results['gim']).to_csv(
+                            'data/gim_results.csv', 
+                            mode='a', 
+                            header=not os.path.exists('data/gim_results.csv'),
+                            index=False
+                        )
             
             # Log the search
             app.logger.info(
@@ -73,12 +110,23 @@ def index():
 @app.route('/export')
 def export_results():
     try:
-        return send_file(
-            os.path.abspath('data/results.csv'),
-            mimetype='text/csv',
-            download_name='pubmed_results.csv',
-            as_attachment=True
-        )
+        # Check which file exists and return it
+        if os.path.exists('data/pubmed_results.csv'):
+            return send_file(
+                os.path.abspath('data/pubmed_results.csv'),
+                mimetype='text/csv',
+                download_name='pubmed_results.csv',
+                as_attachment=True
+            )
+        elif os.path.exists('data/results.csv'):
+            return send_file(
+                os.path.abspath('data/results.csv'),
+                mimetype='text/csv',
+                download_name='results.csv',
+                as_attachment=True
+            )
+        else:
+            return "No results to export", 404
     except FileNotFoundError:
         return "No results to export", 404
 
