@@ -76,12 +76,28 @@ async def index():
                 async with GIMSearch(max_results=max_results) as gim_search:
                     results['gim'] = await gim_search.search(query_str)
                     if results['gim']:
+                        # Create data directory if it doesn't exist
+                        os.makedirs('data', exist_ok=True)
+                        
+                        # Ensure all results have the same fields
+                        for result in results['gim']:
+                            # Add new fields if they don't exist
+                            if 'publication_details' not in result:
+                                result['publication_details'] = ""
+                            if 'database_info' not in result:
+                                result['database_info'] = ""
+                            if 'subjects' not in result:
+                                result['subjects'] = ""
+                            if 'doc_id' not in result:
+                                result['doc_id'] = ""
+                        
+                        # Save to CSV with overwrite mode to ensure clean results
                         pd.DataFrame(results['gim']).to_csv(
                             'data/gim_results.csv', 
-                            mode='a', 
-                            header=not os.path.exists('data/gim_results.csv'),
+                            mode='w',  # Use write mode instead of append
                             index=False
                         )
+                        app.logger.info(f"Saved {len(results['gim'])} GIM results to CSV")
             
             # Log the search
             app.logger.info(
@@ -111,7 +127,14 @@ async def index():
 def export_results():
     try:
         # Check which file exists and return it
-        if os.path.exists('data/pubmed_results.csv'):
+        if os.path.exists('data/gim_results.csv'):
+            return send_file(
+                os.path.abspath('data/gim_results.csv'),
+                mimetype='text/csv',
+                download_name='gim_results.csv',
+                as_attachment=True
+            )
+        elif os.path.exists('data/pubmed_results.csv'):
             return send_file(
                 os.path.abspath('data/pubmed_results.csv'),
                 mimetype='text/csv',

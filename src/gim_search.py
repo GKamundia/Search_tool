@@ -1,7 +1,6 @@
 import os
 import logging
 import random
-import time
 import asyncio
 import re
 from typing import List, Dict
@@ -301,12 +300,23 @@ class GIMSearch:
     async def _set_results_per_page(self, page, count: int = 100):
         """Set the number of results per page"""
         try:
-            # Look for the results per page selector
+            # First try using the JavaScript function directly
+            try:
+                self.logger.info(f"Attempting to set results per page to {count} using JavaScript function")
+                await page.evaluate(f"change_count('{count}')")
+                await page.wait_for_load_state('networkidle')
+                self.logger.info(f"Set results per page to {count} using JavaScript function")
+                return True
+            except Exception as js_error:
+                self.logger.warning(f"JavaScript approach failed: {str(js_error)}, trying fallback methods")
+            
+            # Look for the results per page selector as fallback
             count_selectors = [
                 f'a:has-text("{count}")',
                 '.count a',
                 '.per-page a',
-                'a[href*="count={count}"]'
+                'a[href*="count={count}"]',
+                f'a[href*="javascript: change_count(\'{count}\')"]'
             ]
             
             for selector in count_selectors:
@@ -331,18 +341,137 @@ class GIMSearch:
         # Save screenshot of results page
         await page.screenshot(path=f'logs/screenshots/gim_results_page_before_parsing.png')
         
+        # First, check if the "See more details" toggle is already ON
+        try:
+            self.logger.info("Checking if 'See more details' toggle is already ON")
+            
+            # Take a screenshot before checking toggle state
+            await page.screenshot(path=f'logs/screenshots/gim_results_page_before_checking_toggle.png')
+            
+            # Check the toggle state using JavaScript
+            toggle_already_on = False
+            try:
+                toggle_state = await page.evaluate("""
+                    () => {
+                        // Try to find the toggle checkbox
+                        const toggle = document.getElementById('showDetailSwitch');
+                        if (toggle) {
+                            console.log('Toggle state:', toggle.checked);
+                            return toggle.checked;
+                        }
+                        
+                        // If we can't find it by ID, look for the class
+                        const toggleByClass = document.querySelector('.custom-control-input');
+                        if (toggleByClass) {
+                            console.log('Toggle state by class:', toggleByClass.checked);
+                            return toggleByClass.checked;
+                        }
+                        
+                        // If we can't determine the state, assume it's not checked
+                        return false;
+                    }
+                """)
+                
+                if toggle_state:
+                    self.logger.info("'See more details' toggle is already ON, no need to click it")
+                    toggle_already_on = True
+                else:
+                    self.logger.info("'See more details' toggle is OFF, need to activate it")
+            except Exception as js_error:
+                self.logger.warning(f"Failed to check toggle state: {str(js_error)}")
+            
+            # Only try to activate the toggle if it's not already ON
+            if not toggle_already_on:
+                self.logger.info("Attempting to activate global 'See more details' toggle")
+                
+                # Try using JavaScript to click the toggle
+                toggle_activated = False
+                try:
+                    # Try direct getElementById approach
+                    await page.evaluate("""
+                        if (document.getElementById('showDetailSwitch')) {
+                            document.getElementById('showDetailSwitch').click();
+                            console.log('Clicked showDetailSwitch via getElementById');
+                        } else if (document.querySelector('.custom-control-input')) {
+                            document.querySelector('.custom-control-input').click();
+                            console.log('Clicked custom-control-input via querySelector');
+                        } else if (document.querySelector('label[for="showDetailSwitch"]')) {
+                            document.querySelector('label[for="showDetailSwitch"]').click();
+                            console.log('Clicked label for showDetailSwitch');
+                        }
+                    """)
+                    
+                    # Wait for any potential page updates after clicking the toggle
+                    await asyncio.sleep(2)
+                    await page.wait_for_load_state('networkidle')
+                    
+                    # Take a screenshot after toggling
+                    await page.screenshot(path=f'logs/screenshots/gim_results_page_after_toggle.png')
+                    
+                    # Save the HTML content after toggling for debugging
+                    os.makedirs('logs/html', exist_ok=True)
+                    html_after_toggle = await page.content()
+                    with open('logs/html/gim_page_after_toggle.html', 'w', encoding='utf-8') as f:
+                        f.write(html_after_toggle)
+                    
+                    toggle_activated = True
+                    self.logger.info("Successfully activated global 'See more details' toggle via JavaScript")
+                except Exception as js_error:
+                    self.logger.warning(f"JavaScript toggle activation failed: {str(js_error)}")
+                
+                # If JavaScript approach failed, try using Playwright's click method
+                if not toggle_activated:
+                    toggle_selectors = [
+                        '#showDetailSwitch',
+                        'label[for="showDetailSwitch"]',
+                        '.custom-control-input',
+                        '.custom-switch input'
+                    ]
+                    
+                    for selector in toggle_selectors:
+                        try:
+                            if await page.locator(selector).count() > 0:
+                                await page.locator(selector).click()
+                                await asyncio.sleep(2)
+                                await page.wait_for_load_state('networkidle')
+                                toggle_activated = True
+                                self.logger.info(f"Successfully activated global 'See more details' toggle via selector: {selector}")
+                                break
+                        except Exception as click_error:
+                            self.logger.warning(f"Failed to click toggle with selector {selector}: {str(click_error)}")
+                
+                if toggle_activated:
+                    self.logger.info("Global 'See more details' toggle activated successfully")
+                else:
+                    self.logger.warning("Could not activate global 'See more details' toggle")
+            
+            # Verify the toggle state after our actions
+            try:
+                final_toggle_state = await page.evaluate("""
+                    () => {
+                        const toggle = document.getElementById('showDetailSwitch');
+                        if (toggle) return toggle.checked;
+                        
+                        const toggleByClass = document.querySelector('.custom-control-input');
+                        if (toggleByClass) return toggleByClass.checked;
+                        
+                        return false;
+                    }
+                """)
+                
+                self.logger.info(f"Final 'See more details' toggle state: {final_toggle_state}")
+                
+                # Take a screenshot to verify the final state
+                await page.screenshot(path=f'logs/screenshots/gim_results_page_final_toggle_state.png')
+            except Exception as verify_error:
+                self.logger.warning(f"Failed to verify final toggle state: {str(verify_error)}")
+                
+        except Exception as toggle_error:
+            self.logger.error(f"Error handling global toggle: {str(toggle_error)}")
+        
         # Try to find result items
         result_selectors = [
-            '.results .item',
-            '.media-list > div',
-            '.resultRow',
-            '.searchResults li',
-            '.record',
-            '.result',
-            'article.post',
-            '.searchResultItem',
-            'div[id^="doc"]',
-            '.document'
+            '.box1[data-test="result_resource_item"]'  # Target specific result containers
         ]
         
         # Find which selector works for this page
@@ -369,7 +498,7 @@ class GIMSearch:
                 item = page.locator(working_selector).nth(i)
                 
                 # Extract basic information before clicking "See more details"
-                title_text = await item.locator('a').first.text_content()
+                title_text = await item.locator('.titleArt a').first.text_content()
                 title = title_text.strip()
                 
                 # Skip navigation elements and pagination links
@@ -386,114 +515,161 @@ class GIMSearch:
                     continue
                 
                 # Get the URL
-                url = await item.locator('a').first.get_attribute('href')
+                url = await item.locator('.titleArt a').first.get_attribute('href')
                 if not url or url.startswith('javascript:'):
                     self.logger.info(f"Skipping item with invalid URL: {title}")
                     continue
                 
                 self.logger.info(f"Processing result {i+1}: {title}")
                 
-                # Look for "See more details" button within this item
-                more_details_selectors = [
-                    'a.showDetails', 
-                    'button.showDetails',
-                    'a:has-text("See more details")',
-                    'button:has-text("See more details")',
-                    '.toggle-details',
-                    '.show-more'
-                ]
+                # We've already tried to activate the global toggle, but we'll check if we need to toggle for this specific item
+                item_details_visible = False
                 
-                # Try to find and click the "See more details" button
-                details_clicked = False
-                for selector in more_details_selectors:
-                    details_button = item.locator(selector)
-                    if await details_button.count() > 0:
-                        try:
-                            await details_button.click()
-                            self.logger.info(f"Clicked 'See more details' button for item {i+1}")
-                            details_clicked = True
-                            # Wait a moment for the details to load
-                            await asyncio.sleep(0.5)
+                try:
+                    # Check if this item already has abstract content visible (from the global toggle)
+                    abstract_check_selectors = [
+                        '.reference-detail',
+                        'div:has-text("ABSTRACT")',
+                        '.details .text',
+                        '.record-abstract'
+                    ]
+                    
+                    for selector in abstract_check_selectors:
+                        if await item.locator(selector).count() > 0:
+                            item_details_visible = True
+                            self.logger.info(f"Item {i+1} already has details visible")
                             break
-                        except Exception as e:
-                            self.logger.error(f"Error clicking 'See more details' button: {str(e)}")
+                    
+                    # If details aren't visible, try to toggle for this specific item
+                    if not item_details_visible:
+                        more_details_selectors = [
+                            '#showDetailSwitch',
+                            'label[for="showDetailSwitch"]',
+                            '.custom-control-input',
+                            '.custom-switch input',
+                            'a.showDetails', 
+                            'button.showDetails',
+                            'a:has-text("See more details")',
+                            'button:has-text("See more details")',
+                            '.toggle-details',
+                            '.show-more'
+                        ]
+                        
+                        for selector in more_details_selectors:
+                            try:
+                                if await item.locator(selector).count() > 0:
+                                    await item.locator(selector).click()
+                                    self.logger.info(f"Clicked item-specific 'See more details' with selector: {selector}")
+                                    item_details_visible = True
+                                    # Wait longer for the details to load
+                                    await asyncio.sleep(2)
+                                    break
+                            except Exception as e:
+                                self.logger.debug(f"Could not click item-specific toggle with selector {selector}: {str(e)}")
+                except Exception as item_toggle_error:
+                    self.logger.warning(f"Error checking/toggling item details: {str(item_toggle_error)}")
                 
                 # Take a screenshot after clicking "See more details"
-                if details_clicked:
+                if item_details_visible:
                     await page.screenshot(path=f'logs/screenshots/gim_result_item_{i+1}_expanded.png')
                 
                 # Extract authors
-                authors = ""
-                authors_selectors = ['.authors', '.author', '.line:nth-child(2)']
-                for selector in authors_selectors:
-                    if await item.locator(selector).count() > 0:
-                        authors = await item.locator(selector).text_content()
-                        authors = authors.strip()
-                        break
+                authors = []
+                try:
+                    author_links = await item.locator('.author a').all()
+                    for author in author_links:
+                        authors.append(await author.text_content())
+                    authors = '; '.join(authors)
+                except Exception as author_error:
+                    self.logger.warning(f"Error extracting authors: {str(author_error)}")
+                    authors = ""
                 
-                # Extract journal
+                # Extract journal and publication details
                 journal = ""
-                journal_selectors = ['.journalTitle', '.journal', '.source']
-                for selector in journal_selectors:
-                    if await item.locator(selector).count() > 0:
-                        journal = await item.locator(selector).text_content()
-                        journal = journal.strip()
-                        break
-                
-                # Extract year
+                publication_details = ""
                 year = ""
-                year_selectors = ['.year', '.date', '.line:nth-child(3)']
-                for selector in year_selectors:
-                    if await item.locator(selector).count() > 0:
-                        year_text = await item.locator(selector).text_content()
-                        year_text = year_text.strip()
-                        # Try to extract just the year if it's part of a longer string
-                        year_match = re.search(r'(19|20)\d{2}', year_text)
-                        if year_match:
-                            year = year_match.group(0)
-                        else:
-                            year = year_text
-                        break
+                try:
+                    ref_selector = '.reference em'
+                    if await item.locator(ref_selector).count() > 0:
+                        journal_text = await item.locator(ref_selector).text_content()
+                        # Parse "Arch. latinoam. nutr;74(3): 199-205, oct. 2024. tab"
+                        journal_parts = journal_text.split(';')
+                        if journal_parts:
+                            journal = journal_parts[0].strip()
+                            publication_details = journal_text
+                            
+                            # Extract year from publication details
+                            year_match = re.search(r'(19|20)\d{2}', journal_text)
+                            if year_match:
+                                year = year_match.group(0)
+                except Exception as journal_error:
+                    self.logger.warning(f"Error extracting journal info: {str(journal_error)}")
                 
-                # Extract abstract - this should be visible after clicking "See more details"
+                # Extract database info
+                database_info = ""
+                try:
+                    db_selector = '.dataArticle'
+                    if await item.locator(db_selector).count() > 0:
+                        database_info = await item.locator(db_selector).text_content()
+                except Exception as db_error:
+                    self.logger.warning(f"Error extracting database info: {str(db_error)}")
+                
+                # Extract abstract
                 abstract = ""
-                abstract_selectors = ['.abstract', '#abstract', 'div:has-text("ABSTRACT")', '.details .text', '.record-abstract']
-                for selector in abstract_selectors:
-                    if await item.locator(selector).count() > 0:
-                        abstract_text = await item.locator(selector).text_content()
-                        abstract_text = abstract_text.strip()
-                        # Clean up the text
-                        abstract_text = re.sub(r'ABSTRACT\s*', '', abstract_text, flags=re.IGNORECASE).strip()
-                        if abstract_text:
-                            abstract = abstract_text
-                            break
+                try:
+                    abstract_selector = '.reference-detail'
+                    if await item.locator(abstract_selector).count() > 0:
+                        abstract_text = await item.locator(abstract_selector).text_content()
+                        
+                        # Extract text after ABSTRACT heading
+                        abstract_match = re.search(r'ABSTRACT(.*?)(?:INTRODUCTION|OBJECTIVE|MATERIALS AND METHODS|RESULTS|CONCLUSION|REFERENCES|Subject|$)', 
+                                                 abstract_text, re.DOTALL | re.IGNORECASE)
+                        if abstract_match:
+                            abstract = abstract_match.group(1).strip()
+                        else:
+                            # Fallback to all text if sections not found
+                            abstract = abstract_text.strip()
+                except Exception as abstract_error:
+                    self.logger.warning(f"Error extracting abstract: {str(abstract_error)}")
                 
-                # If we still don't have an abstract, try to find it in the expanded content
-                if not abstract and details_clicked:
-                    # Get the entire text content of the expanded item
-                    full_text = await item.text_content()
-                    
-                    # Look for the abstract section
-                    abstract_match = re.search(r'ABSTRACT\s*(.*?)(?:INTRODUCTION|OBJECTIVE|MATERIALS AND METHODS|RESULTS|CONCLUSION|$)', 
-                                              full_text, re.DOTALL | re.IGNORECASE)
-                    if abstract_match:
-                        abstract = abstract_match.group(1).strip()
-                    else:
-                        # Try another approach - look for text after "ABSTRACT" keyword
-                        abstract_pos = full_text.lower().find('abstract')
-                        if abstract_pos != -1:
-                            abstract = full_text[abstract_pos + 8:].strip()
-                            # Limit to a reasonable length
-                            if len(abstract) > 500:
-                                abstract = abstract[:500] + "..."
+                # Extract subjects/keywords
+                subjects = []
+                try:
+                    # First check if there's a Subject(s) heading
+                    subject_heading_selector = '.reference-detail h5.title2:has-text("Subject")'
+                    if await item.locator(subject_heading_selector).count() > 0:
+                        # Get all subject links that follow the heading
+                        subject_links = await item.locator('.reference-detail h5.title2:has-text("Subject") ~ a').all()
+                        for subject_link in subject_links:
+                            subject_text = await subject_link.text_content()
+                            if subject_text and subject_text.strip():
+                                subjects.append(subject_text.strip())
+                except Exception as subject_error:
+                    self.logger.warning(f"Error extracting subjects: {str(subject_error)}")
                 
-                # Add the result
+                # Extract document ID
+                doc_id = ""
+                try:
+                    doc_id_selector = '.doc_id'
+                    if await item.locator(doc_id_selector).count() > 0:
+                        doc_id = await item.locator(doc_id_selector).text_content()
+                except Exception as doc_id_error:
+                    self.logger.warning(f"Error extracting document ID: {str(doc_id_error)}")
+                
+                # Take a screenshot of the item
+                await page.screenshot(path=f'logs/screenshots/gim_result_item_{i+1}.png')
+                
+                # Add the result with enhanced metadata
                 results.append({
                     'title': title,
                     'authors': authors,
                     'journal': journal,
                     'year': year,
+                    'publication_details': publication_details,
+                    'database_info': database_info,
                     'abstract': abstract if abstract else "Abstract not available.",
+                    'subjects': '; '.join(subjects) if subjects else "",
+                    'doc_id': doc_id,
                     'url': url
                 })
                 
@@ -514,58 +690,38 @@ class GIMSearch:
         results = []
         
         # Save the HTML content for debugging
+        os.makedirs('logs', exist_ok=True)
         with open('logs/gim_results_content.html', 'w', encoding='utf-8') as f:
             f.write(html)
         self.logger.info(f"Saved results HTML content to logs/gim_results_content.html")
         
-        # Try multiple selectors to find result items
-        selectors = [
-            '.results .item',
-            '.media-list > div',
-            '.resultRow',
-            '.searchResults li',
-            '.record',
-            '.result',
-            'article.post',
-            '.searchResultItem',
-            'div[id^="doc"]',
-            '.document'
-        ]
-        
-        result_items = []
-        for selector in selectors:
-            items = soup.select(selector)
-            if items:
-                self.logger.info(f"Found {len(items)} items with selector: {selector}")
-                result_items = items
-                break
+        # Try to find result items with the specific selector
+        result_items = soup.select('.box1[data-test="result_resource_item"]')
         
         if not result_items:
-            # If no results found with standard selectors, try to find any links that might be results
-            self.logger.warning("No results found with standard selectors, trying fallback approach")
+            # If no results found with specific selector, try other selectors
+            selectors = [
+                '.results .item',
+                '.media-list > div',
+                '.resultRow',
+                '.searchResults li',
+                '.record',
+                '.result',
+                'article.post',
+                '.searchResultItem',
+                'div[id^="doc"]',
+                '.document'
+            ]
             
-            # Look for any div that might contain a list of results
-            potential_containers = soup.select('div.results, div.searchResults, div.content, main, div.container')
-            
-            for container in potential_containers:
-                # Look for links with titles that might be result items
-                links = container.select('a[href]:not([href^="#"])')
-                if len(links) > 5:  # If we find a group of links, they might be results
-                    self.logger.info(f"Found {len(links)} potential result links in container")
-                    
-                    # Create simple result items from these links
-                    result_items = []
-                    for link in links:
-                        # Create a simple wrapper div for each link to use with our existing parsing logic
-                        wrapper = soup.new_tag('div')
-                        wrapper.append(link)
-                        result_items.append(wrapper)
+            for selector in selectors:
+                items = soup.select(selector)
+                if items:
+                    self.logger.info(f"Found {len(items)} items with selector: {selector}")
+                    result_items = items
                     break
         
-        self.logger.info(f"Found {len(result_items)} potential result items")
-        
-        # If still no results, check if there's a "no results" message
         if not result_items:
+            # If still no results, check if there's a "no results" message
             no_results_texts = ["no results", "no documents found", "your search did not match", "try different keywords"]
             page_text = soup.get_text().lower()
             
@@ -574,22 +730,21 @@ class GIMSearch:
                     self.logger.info(f"Found '{text}' message - confirming no results")
                     return []
         
+        self.logger.info(f"Found {len(result_items)} potential result items")
+        
         for item in result_items:
             try:
-                # Extract title and URL - try different possible selectors
-                title_elem = (item.select_one('a.result-title') or 
-                             item.select_one('.line a') or 
-                             item.select_one('h3 a') or
-                             item.select_one('a[title]'))
+                # Extract title and URL
+                title_elem = item.select_one('.titleArt a')
                 
                 if not title_elem:
                     self.logger.warning("Could not find title element in result item")
                     continue
                     
                 title = title_elem.text.strip()
-                url = title_elem['href']
+                url = title_elem.get('href', '')
                 
-                # Skip navigation elements, pagination links, and other non-result items
+                # Skip navigation elements and pagination links
                 if any(skip_text in title.lower() for skip_text in [
                     'list items', 'clear list', 'page', 'next', 'previous', 'javascript:',
                     'go to', 'login', 'register', 'sign in', 'sign up'
@@ -597,67 +752,94 @@ class GIMSearch:
                     self.logger.info(f"Skipping navigation element: {title}")
                     continue
                 
-                # Skip items with very short titles or URLs that are JavaScript functions
-                if len(title) < 5 or url.startswith('javascript:'):
-                    self.logger.info(f"Skipping invalid result: {title} ({url})")
+                # Skip items with very short titles
+                if len(title) < 5:
+                    self.logger.info(f"Skipping invalid result: {title}")
                     continue
                 
-                self.logger.debug(f"Found valid result: {title}")
-                
-                # Extract authors - try different possible selectors
+                # Extract authors
                 authors = ""
-                authors_elem = (item.select_one('.authors') or 
-                               item.select_one('.author') or
-                               item.select_one('.line:nth-child(2)'))
-                if authors_elem:
-                    authors = authors_elem.text.strip()
+                author_elems = item.select('.author a')
+                if author_elems:
+                    authors = '; '.join([a.text.strip() for a in author_elems])
                 
-                # Extract journal - try different possible selectors
+                # Extract journal and publication details
                 journal = ""
-                journal_elem = (item.select_one('.journalTitle') or 
-                               item.select_one('.journal') or
-                               item.select_one('.source'))
-                if journal_elem:
-                    journal = journal_elem.text.strip()
-                
-                # Extract year - try different possible selectors
+                publication_details = ""
                 year = ""
-                year_elem = (item.select_one('.year') or 
-                            item.select_one('.date') or
-                            item.select_one('.line:nth-child(3)'))
-                if year_elem:
-                    year = year_elem.text.strip()
-                    # Try to extract just the year if it's part of a longer string
-                    year_match = re.search(r'(19|20)\d{2}', year)
-                    if year_match:
-                        year = year_match.group(0)
+                ref_elem = item.select_one('.reference em')
+                if ref_elem:
+                    journal_text = ref_elem.text.strip()
+                    journal_parts = journal_text.split(';')
+                    if journal_parts:
+                        journal = journal_parts[0].strip()
+                        publication_details = journal_text
+                        
+                        # Extract year from publication details
+                        year_match = re.search(r'(19|20)\d{2}', journal_text)
+                        if year_match:
+                            year = year_match.group(0)
                 
-                # Extract abstract - try different possible selectors
+                # Extract database info
+                database_info = ""
+                db_elem = item.select_one('.dataArticle')
+                if db_elem:
+                    database_info = db_elem.text.strip()
+                
+                # Extract abstract
                 abstract = ""
-                abstract_elem = (item.select_one('.abstract') or 
-                                item.select_one('.description') or
-                                item.select_one('.text'))
+                abstract_elem = item.select_one('.reference-detail')
                 if abstract_elem:
-                    abstract = abstract_elem.text.strip()
+                    abstract_text = abstract_elem.text.strip()
+                    
+                    # Extract text after ABSTRACT heading
+                    abstract_match = re.search(r'ABSTRACT(.*?)(?:INTRODUCTION|OBJECTIVE|MATERIALS AND METHODS|RESULTS|CONCLUSION|REFERENCES|Subject|$)', 
+                                             abstract_text, re.DOTALL | re.IGNORECASE)
+                    if abstract_match:
+                        abstract = abstract_match.group(1).strip()
+                    else:
+                        # Fallback to all text if sections not found
+                        abstract = abstract_text
                 
-                # Note: We'll use the browser-based parsing for abstracts instead of this method
+                # Extract subjects/keywords
+                subjects = []
+                subject_heading = item.select_one('.reference-detail h5.title2:-soup-contains("Subject")')
+                if subject_heading:
+                    # Get all subject links that follow the heading
+                    current = subject_heading.next_sibling
+                    while current and not (hasattr(current, 'name') and current.name == 'h5'):
+                        if hasattr(current, 'name') and current.name == 'a':
+                            subject_text = current.text.strip()
+                            if subject_text:
+                                subjects.append(subject_text)
+                        current = current.next_sibling
                 
+                # Extract document ID
+                doc_id = ""
+                doc_id_elem = item.select_one('.doc_id')
+                if doc_id_elem:
+                    doc_id = doc_id_elem.text.strip()
+                
+                # Add the result with enhanced metadata
                 results.append({
                     'title': title,
                     'authors': authors,
                     'journal': journal,
                     'year': year,
+                    'publication_details': publication_details,
+                    'database_info': database_info,
                     'abstract': abstract if abstract else "Abstract not available.",
+                    'subjects': '; '.join(subjects) if subjects else "",
+                    'doc_id': doc_id,
                     'url': url
                 })
                 
                 if len(results) >= self.max_results:
                     break
+                    
             except Exception as e:
-                self.logger.error(f"Error parsing result item: {str(e)}")
+                self.logger.error(f"Error processing result item: {str(e)}")
                 continue
         
-        # Final validation to ensure we only return valid results
-        valid_results = [r for r in results if len(r['title']) > 5 and not r['url'].startswith('javascript:')]
-        self.logger.info(f"Found {len(valid_results)} valid results from GIM (filtered from {len(results)} total)")
-        return valid_results
+        self.logger.info(f"Found {len(results)} valid results from GIM HTML parsing")
+        return results

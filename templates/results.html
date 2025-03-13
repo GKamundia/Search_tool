@@ -54,8 +54,22 @@
           </div>
           <p class="mb-1">{{ result.authors }}</p>
           <small class="text-muted">{{ result.journal }}</small>
-          {% if result.abstract and result.abstract != "Abstract not available."
-          %}
+          {% if result.publication_details %}
+          <small class="text-muted d-block"
+            >{{ result.publication_details }}</small
+          >
+          {% endif %} {% if result.database_info %}
+          <small class="text-muted d-block">{{ result.database_info }}</small>
+          {% endif %} {% if result.subjects %}
+          <small class="text-muted d-block"
+            ><strong>Subjects:</strong> {{ result.subjects }}</small
+          >
+          {% endif %} {% if result.doc_id %}
+          <small class="text-muted d-block"
+            ><strong>ID:</strong> {{ result.doc_id }}</small
+          >
+          {% endif %} {% if result.abstract and result.abstract != "Abstract not
+          available." %}
           <div class="mt-2">
             <button
               class="btn btn-sm btn-outline-primary"
