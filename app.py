@@ -6,6 +6,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from src.gim_search import GIMSearch
 from src.scholarly_search import PubMedSearch
+from src.arxiv_search import ArXivSearch
 from src.query_builder import QueryBuilder
 from dotenv import load_dotenv
 import datetime
@@ -65,7 +66,7 @@ async def index():
             selected_dbs = request.form.getlist('databases')
             
             # Execute searches concurrently
-            results = {'pubmed': [], 'gim': []}
+            results = {'pubmed': [], 'gim': [], 'arxiv': []}
             
             if 'pubmed' in selected_dbs:
                 pubmed_search = PubMedSearch(max_results=max_results)
