@@ -100,6 +100,14 @@ async def index():
                         )
                         app.logger.info(f"Saved {len(results['gim'])} GIM results to CSV")
             
+            if 'arxiv' in selected_dbs:
+                arxiv_search = ArXivSearch(max_results=max_results)
+                results['arxiv'] = await asyncio.to_thread(arxiv_search.search, query_str)
+                if results['arxiv']:
+                    os.makedirs('data', exist_ok=True)
+                    arxiv_search.save_to_csv(results['arxiv'], 'data/arxiv_results.csv')
+                    app.logger.info(f"Saved {len(results['arxiv'])} arXiv results to CSV")
+
             # Log the search
             app.logger.info(
                 'Search executed',
@@ -111,7 +119,7 @@ async def index():
                     'start_year': start_year,
                     'end_year': end_year,
                     'max_results': max_results,
-                    'result_count': len(results)
+                    'result_count': sum(len(v) for v in results.values())  # Count total results
                 }
             )
             

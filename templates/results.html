@@ -4,7 +4,8 @@
   <p class="text-muted">Query: {{ query }}</p>
 
   <div class="row">
-    <div class="col-md-6">
+    <!-- PubMed Column -->
+    <div class="col-md-4">
       <div class="alert alert-info">
         PubMed Results: {{ results.pubmed|length }}
       </div>
@@ -35,61 +36,18 @@
               <div class="card card-body">{{ result.abstract }}</div>
             </div>
 
-            <div class="col-md-4">
-              <div class="alert alert-warning">
-                arXiv Results: {{ results.arxiv|length }}
-              </div>
-              <div class="list-group">
-                {% for result in results.arxiv %}
-                <div class="list-group-item">
-                  <div class="d-flex w-100 justify-content-between">
-                    <h5 class="mb-1">
-                      <a href="{{ result.pdf_url }}" target="_blank"
-                        >{{ result.title }}</a
-                      >
-                    </h5>
-                    <small>{{ result.published[:4] }}</small>
-                  </div>
-                  <p class="mb-1">{{ result.authors }}</p>
-                  {% if result.primary_category %}
-                  <small class="text-muted d-block"
-                    >Category: {{ result.primary_category }}</small
-                  >
-                  {% endif %} {% if result.journal_ref %}
-                  <small class="text-muted d-block"
-                    >Journal: {{ result.journal_ref }}</small
-                  >
-                  {% endif %} {% if result.abstract %}
-                  <div class="mt-2">
-                    <button
-                      class="btn btn-sm btn-outline-primary"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#abstract-arxiv-{{ loop.index }}"
-                      aria-expanded="false"
-                    >
-                      Show Abstract
-                    </button>
-                    <div
-                      class="collapse mt-2"
-                      id="abstract-arxiv-{{ loop.index }}"
-                    >
-                      <div class="card card-body">{{ result.abstract }}</div>
-                    </div>
-                  </div>
-                  {% endif %}
-                </div>
-                {% endfor %}
-              </div>
-            </div>
-          </div>
           {% endif %}
         </div>
         {% endfor %}
       </div>
     </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
 
-    <div class="col-md-6">
+    <!-- GIM Column -->
+    <div class="col-md-4">
       <div class="alert alert-info">GIM Results: {{ results.gim|length }}</div>
       <div class="list-group">
         {% for result in results.gim %}
@@ -129,6 +87,48 @@
               Show Abstract
             </button>
             <div class="collapse mt-2" id="abstract-gim-{{ loop.index }}">
+              <div class="card card-body">{{ result.abstract }}</div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <!-- ArXiv Column -->
+    <div class="col-md-4">
+      <div class="alert alert-warning">
+        arXiv Results: {{ results.arxiv|length }}
+      </div>
+      <div class="list-group">
+        {% for result in results.arxiv %}
+        <div class="list-group-item">
+          <div class="d-flex w-100 justify-content-between">
+            <h5 class="mb-1">
+              <a href="{{ result.pdf_url }}" target="_blank">{{ result.title }}</a>
+            </h5>
+            <small>{{ result.published[:4] }}</small>
+          </div>
+          <p class="mb-1">{{ result.authors }}</p>
+          {% if result.primary_category %}
+          <small class="text-muted d-block">Category: {{ result.primary_category }}</small>
+          {% endif %}
+          {% if result.journal_ref %}
+          <small class="text-muted d-block">Journal: {{ result.journal_ref }}</small>
+          {% endif %}
+          {% if result.abstract %}
+          <div class="mt-2">
+            <button
+              class="btn btn-sm btn-outline-primary"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#abstract-arxiv-{{ loop.index }}"
+              aria-expanded="false"
+            >
+              Show Abstract
+            </button>
+            <div class="collapse mt-2" id="abstract-arxiv-{{ loop.index }}">
               <div class="card card-body">{{ result.abstract }}</div>
             </div>
           </div>

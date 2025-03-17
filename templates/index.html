@@ -153,6 +153,24 @@
                 rows="3"
               ></textarea>
             </div>
+
+            <div class="database-query mt-4" data-database="arxiv">
+              <h5 class="card-title">arXiv Query</h5>
+              <div class="mb-2">
+                <button
+                  class="btn btn-sm btn-outline-secondary toggle-edit"
+                  type="button"
+                >
+                  <i class="bi bi-pencil"></i> Edit
+                </button>
+              </div>
+              <pre class="bg-dark text-white p-3 rounded query-preview"></pre>
+              <textarea
+                class="form-control d-none query-editor"
+                name="arxiv_query"
+                rows="3"
+              ></textarea>
+            </div>
           </div>
         </div>
 
@@ -174,6 +192,18 @@
         const field = fields[index]?.value || "";
         if (database === "pubmed") {
           queryParts.push(`(${term.value}${field})`);
+        } else if (database === "arxiv") {
+          // Convert to arXiv field syntax
+          const fieldMap = {
+            "[Title]": "ti:",
+            "[Title/Abstract]": "all:",
+            "[Author]": "au:",
+            "[Journal]": "jr:",
+          };
+          const arxivField = fieldMap[field] || "";
+          queryParts.push(
+            arxivField ? `${arxivField}"${term.value}"` : term.value
+          );
         } else {
           queryParts.push(field ? `${field}:"${term.value}"` : term.value);
         }
@@ -188,6 +218,10 @@
     if (startYear && endYear) {
       if (database === "pubmed") {
         queryParts.push(` AND (${startYear}:${endYear}[dp])`);
+      } else if (database === "arxiv") {
+        queryParts.push(
+          ` AND submittedDate:[${startYear}0101 TO ${endYear}1231]`
+        );
       } else {
         queryParts.push(` AND year:${startYear}-${endYear}`);
       }
