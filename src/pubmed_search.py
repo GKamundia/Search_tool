@@ -1,6 +1,7 @@
 import os
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
+from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential
 import requests
 from bs4 import BeautifulSoup
@@ -14,6 +15,27 @@ class PubMedSearch:
         self.max_results = max_results
         self.logger = logging.getLogger(__name__)
         self.existing_pmids = self._load_existing_pmids()
+        
+    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None) -> List[Dict]:
+        """Search PubMed with date filter"""
+        if not since_date:
+            return self.search(query)
+            
+        # Format the date for PubMed API (YYYY/MM/DD)
+        date_str = since_date.strftime("%Y/%m/%d")
+        
+        # Add date filter to query if not already present
+        if "[dp]" not in query:
+            date_query = f"{query} AND {date_str}:3000[dp]"
+        else:
+            # Query already has date filter, we need to modify it
+            # This is a simplistic approach; a more robust parser would be needed for complex queries
+            date_query = query.replace("]", f" AND {date_str}:3000]")
+        
+        self.logger.info(f"Searching PubMed with date filter: {date_query}")
+        
+        # Execute search with date filter
+        return self.search(date_query)
 
     def _load_existing_pmids(self) -> set:
         """Load existing PMIDs from saved results"""

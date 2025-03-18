@@ -1,13 +1,19 @@
 import os
 import logging
 import pandas as pd
-from flask import Flask, render_template, request, send_file
+import json
+from flask import Flask, render_template, request, send_file, redirect, url_for, jsonify, flash
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from src.gim_search import GIMSearch
 from src.pubmed_search import PubMedSearch
 from src.arxiv_search import ArXivSearch
 from src.query_builder import QueryBuilder
+from src.database import init_db
+from src.models import db, SavedSearch, SearchResult
+from src.alert_service import AlertService
+from src.email_service import EmailService
+from src.scheduler import AlertScheduler
 from dotenv import load_dotenv
 import datetime
 from logging.handlers import RotatingFileHandler
@@ -32,6 +38,21 @@ logging.basicConfig(
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret')
+
+# Configure email settings
+app.config['MAIL_SERVER'] = os.getenv('MAIL_SERVER', 'localhost')
+app.config['MAIL_PORT'] = int(os.getenv('MAIL_PORT', 25))
+app.config['MAIL_USERNAME'] = os.getenv('MAIL_USERNAME')
+app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
+app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@example.com')
+app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False').lower() == 'true'
+
+# Initialize database
+db = init_db(app)
+
+# Initialize services
+alert_service = AlertService(app)
+email_service = EmailService(app)
 
 @app.route('/', methods=['GET', 'POST'])
 async def index():

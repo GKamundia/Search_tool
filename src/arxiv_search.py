@@ -1,5 +1,6 @@
 import logging
-from typing import List, Dict
+from typing import List, Dict, Optional
+from datetime import datetime
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 import requests
 from bs4 import BeautifulSoup
@@ -18,6 +19,60 @@ class ArXivSearch:
         self.logger = logging.getLogger(__name__)
         self.base_url = "http://export.arxiv.org/api/query"
         self.qb = qb or QueryBuilder()
+        
+    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None) -> List[Dict]:
+        """Search arXiv with date filter"""
+        if not since_date:
+            return self.search(query)
+            
+        # Format the date for arXiv API (YYYYMMDD)
+        date_str = since_date.strftime("%Y%m%d")
+        
+        # Store the original query
+        original_query = query
+        
+        # Build and convert query
+        self.qb.build()
+        converted_query = self._convert_query()
+        
+        # Add submittedDate filter if not already present
+        if "submittedDate:" not in converted_query:
+            converted_query += f" AND submittedDate:[{date_str}0000 TO 30000101000000]"
+        
+        self.logger.info(f"Searching arXiv with date filter: {converted_query}")
+        
+        # Execute search with date filter
+        params = {
+            "search_query": converted_query,
+            "start": 0,
+            "max_results": self.max_results,
+            "sortBy": "submittedDate",
+            "sortOrder": "descending"
+        }
+        
+        try:
+            response = requests.get(f"{self.base_url}?{urlencode(params)}")
+            response.raise_for_status()
+            
+            if response.status_code == 403:
+                raise ArxivAPIError("Rate limit exceeded")
+            
+            # Log the response status and size
+            self.logger.info(f"arXiv API response: status={response.status_code}, content_length={len(response.content)}")
+            
+            results = self._parse_response(response.content)
+            
+            # Save results to CSV
+            self.save_to_csv(results, 'data/arxiv_results.csv')
+            self.logger.info(f"Saved {len(results)} arXiv results to CSV")
+            
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"arXiv search failed: {str(e)}")
+            # Create an empty CSV file to indicate the search was attempted
+            self.save_to_csv([], 'data/arxiv_results.csv')
+            return []
 
     def _convert_query(self) -> str:
         """Convert PubMed-style query to arXiv syntax"""
