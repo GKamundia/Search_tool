@@ -5,7 +5,7 @@ from flask import Flask, render_template, request, send_file
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from src.gim_search import GIMSearch
-from src.scholarly_search import PubMedSearch
+from src.pubmed_search import PubMedSearch
 from src.arxiv_search import ArXivSearch
 from src.query_builder import QueryBuilder
 from dotenv import load_dotenv
@@ -101,7 +101,7 @@ async def index():
                         app.logger.info(f"Saved {len(results['gim'])} GIM results to CSV")
             
             if 'arxiv' in selected_dbs:
-                arxiv_search = ArXivSearch(max_results=max_results)
+                arxiv_search = ArXivSearch(max_results=max_results, qb=qb)
                 results['arxiv'] = await asyncio.to_thread(arxiv_search.search, query_str)
                 if results['arxiv']:
                     os.makedirs('data', exist_ok=True)

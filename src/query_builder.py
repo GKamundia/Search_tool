@@ -36,35 +36,6 @@ class QueryBuilder:
             query += " AND " + " AND ".join(self.filters)
         return query
 
-    def arxiv_query(self):
-        """Convert PubMed-style query to arXiv syntax"""
-        arxiv_terms = []
-        field_map = {
-            "[Title]": "ti:",
-            "[Title/Abstract]": "all:",
-            "[Author]": "au:",
-            "[Journal]": "jr:",
-        }
-        
-        for term in self.terms:
-            if term in ("AND", "OR", "NOT"):
-                arxiv_terms.append(term)
-                continue
-                
-            # Handle field-specific terms
-            for field, prefix in field_map.items():
-                if field in term:
-                    clean_term = term.replace(field, "")
-                    arxiv_terms.append(f'{prefix}"{clean_term}"')
-                    break
-            else:
-                # Handle wildcards and plain terms
-                if "*" in term:
-                    arxiv_terms.append(f'"{term}"')
-                else:
-                    arxiv_terms.append(term)
-                    
-        return " ".join(arxiv_terms)
 
 # Example usage:
 # (QueryBuilder()

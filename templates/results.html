@@ -1,11 +1,11 @@
 {% extends "base.html" %} {% block content %}
-<div class="mb-4">
+<div class="container mb-4">
   <h3>Search Results</h3>
   <p class="text-muted">Query: {{ query }}</p>
 
-  <div class="row">
+  <div class="row mb-4">
     <!-- PubMed Column -->
-    <div class="col-md-4">
+    <div class="col-md-4 mb-3">
       <div class="alert alert-info">
         PubMed Results: {{ results.pubmed|length }}
       </div>
@@ -35,19 +35,15 @@
             <div class="collapse mt-2" id="abstract-pubmed-{{ loop.index }}">
               <div class="card card-body">{{ result.abstract }}</div>
             </div>
-
+          </div>
           {% endif %}
-        </div>
-        {% endfor %}
-      </div>
-    </div>
         </div>
         {% endfor %}
       </div>
     </div>
 
     <!-- GIM Column -->
-    <div class="col-md-4">
+    <div class="col-md-4 mb-3">
       <div class="alert alert-info">GIM Results: {{ results.gim|length }}</div>
       <div class="list-group">
         {% for result in results.gim %}
@@ -97,7 +93,7 @@
     </div>
 
     <!-- ArXiv Column -->
-    <div class="col-md-4">
+    <div class="col-md-4 mb-3">
       <div class="alert alert-warning">
         arXiv Results: {{ results.arxiv|length }}
       </div>
@@ -106,18 +102,22 @@
         <div class="list-group-item">
           <div class="d-flex w-100 justify-content-between">
             <h5 class="mb-1">
-              <a href="{{ result.pdf_url }}" target="_blank">{{ result.title }}</a>
+              <a href="{{ result.pdf_url }}" target="_blank"
+                >{{ result.title }}</a
+              >
             </h5>
             <small>{{ result.published[:4] }}</small>
           </div>
           <p class="mb-1">{{ result.authors }}</p>
           {% if result.primary_category %}
-          <small class="text-muted d-block">Category: {{ result.primary_category }}</small>
-          {% endif %}
-          {% if result.journal_ref %}
-          <small class="text-muted d-block">Journal: {{ result.journal_ref }}</small>
-          {% endif %}
-          {% if result.abstract %}
+          <small class="text-muted d-block"
+            >Category: {{ result.primary_category }}</small
+          >
+          {% endif %} {% if result.journal_ref %}
+          <small class="text-muted d-block"
+            >Journal: {{ result.journal_ref }}</small
+          >
+          {% endif %} {% if result.abstract %}
           <div class="mt-2">
             <button
               class="btn btn-sm btn-outline-primary"
