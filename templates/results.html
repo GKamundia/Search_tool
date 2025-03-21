@@ -1,7 +1,137 @@
 {% extends "base.html" %} {% block content %}
 <div class="container mb-4">
-  <h3>Search Results</h3>
-  <p class="text-muted">Query: {{ query }}</p>
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h3>Search Results</h3>
+      <p class="text-muted mb-0">Query: {{ query }}</p>
+    </div>
+    <button
+      type="button"
+      class="btn btn-success"
+      data-bs-toggle="modal"
+      data-bs-target="#saveSearchModal"
+    >
+      <i class="bi bi-bookmark-plus"></i> Save this search
+    </button>
+  </div>
+
+  <!-- Save Search Modal -->
+  <div
+    class="modal fade"
+    id="saveSearchModal"
+    tabindex="-1"
+    aria-labelledby="saveSearchModalLabel"
+    aria-hidden="true"
+  >
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="saveSearchModalLabel">
+            Save Search for Alerts
+          </h5>
+          <button
+            type="button"
+            class="btn-close"
+            data-bs-dismiss="modal"
+            aria-label="Close"
+          ></button>
+        </div>
+        <form method="POST" action="{{ url_for('save_search') }}">
+          <div class="modal-body">
+            <div class="mb-3">
+              <label for="search_name" class="form-label">Search Name</label>
+              <input
+                type="text"
+                class="form-control"
+                id="search_name"
+                name="search_name"
+                required
+              />
+              <div class="form-text">Give your search a descriptive name</div>
+            </div>
+
+            <div class="mb-3">
+              <label for="email" class="form-label">Email Address</label>
+              <input
+                type="email"
+                class="form-control"
+                id="email"
+                name="email"
+                placeholder="your@email.com"
+              />
+              <div class="form-text">
+                Optional: Receive email notifications when new papers are found
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Databases to Monitor</label>
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="databases"
+                  value="pubmed"
+                  id="pubmedCheck"
+                  checked
+                />
+                <label class="form-check-label" for="pubmedCheck">PubMed</label>
+              </div>
+              <div class="form-check">
+                <input
+                  class="form-check-input"
+                  type="checkbox"
+                  name="databases"
+                  value="arxiv"
+                  id="arxivCheck"
+                  checked
+                />
+                <label class="form-check-label" for="arxivCheck">arXiv</label>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label for="frequency" class="form-label">Check Frequency</label>
+              <select class="form-select" id="frequency" name="frequency">
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+                <option value="monthly" selected>Monthly</option>
+              </select>
+              <div class="form-text">How often to check for new papers</div>
+            </div>
+
+            <!-- Hidden fields to store search parameters -->
+            <input type="hidden" name="query" value="{{ query }}" />
+            <input
+              type="hidden"
+              name="max_results"
+              value="{{ request.form.get('max_results', 50) }}"
+            />
+            <input
+              type="hidden"
+              name="start_year"
+              value="{{ request.form.get('start_year', '') }}"
+            />
+            <input
+              type="hidden"
+              name="end_year"
+              value="{{ request.form.get('end_year', '') }}"
+            />
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">Save Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
 
   <div class="row mb-4">
     <!-- PubMed Column -->

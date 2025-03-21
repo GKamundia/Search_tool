@@ -1,0 +1,202 @@
+{% extends "base.html" %} {% block content %}
+<div class="container mb-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h3>Saved Searches</h3>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">New Search</a>
+  </div>
+
+  {% if searches %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Query</th>
+          <th>Databases</th>
+          <th>Frequency</th>
+          <th>Last Check</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for search in searches %}
+        <tr>
+          <td>{{ search.name }}</td>
+          <td>{{ search.query }}</td>
+          <td>{{ search.databases }}</td>
+          <td>{{ search.frequency }}</td>
+          <td>{{ search.last_check_timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>
+            {% if search.active %}
+            <span class="badge bg-success">Active</span>
+            {% else %}
+            <span class="badge bg-secondary">Inactive</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="btn-group" role="group">
+              <form
+                method="POST"
+                action="{{ url_for('run_search', search_id=search.id) }}"
+                class="d-inline run-search-form"
+              >
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-primary"
+                  title="Run Now"
+                >
+                  <i class="bi bi-play-fill"></i> Run
+                </button>
+              </form>
+
+              <form
+                method="POST"
+                action="{{ url_for('test_alert', search_id=search.id) }}"
+                class="d-inline test-alert-form"
+              >
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-info"
+                  title="Generate Test Papers"
+                >
+                  <i class="bi bi-bug"></i> Test
+                </button>
+              </form>
+
+              <form
+                method="POST"
+                action="{{ url_for('toggle_search', search_id=search.id) }}"
+                class="d-inline"
+              >
+                {% if search.active %}
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-warning"
+                  title="Deactivate"
+                >
+                  <i class="bi bi-pause-fill"></i> Pause
+                </button>
+                {% else %}
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-success"
+                  title="Activate"
+                >
+                  <i class="bi bi-check-circle"></i> Activate
+                </button>
+                {% endif %}
+              </form>
+
+              <form
+                method="POST"
+                action="{{ url_for('delete_search', search_id=search.id) }}"
+                class="d-inline"
+                onsubmit="return confirm('Are you sure you want to delete this saved search?');"
+              >
+                <button
+                  type="submit"
+                  class="btn btn-sm btn-danger"
+                  title="Delete"
+                >
+                  <i class="bi bi-trash"></i> Delete
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div id="run-result" class="alert alert-info mt-3 d-none">
+    <span id="run-result-message"></span>
+  </div>
+
+  {% else %}
+  <div class="alert alert-info">
+    <p>You don't have any saved searches yet.</p>
+    <p>
+      Run a search and click "Save this search" to create alerts for new papers.
+    </p>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+  // Handle form submissions via AJAX
+  document.addEventListener("DOMContentLoaded", function () {
+    const runForms = document.querySelectorAll(".run-search-form");
+    const testForms = document.querySelectorAll(".test-alert-form");
+    const resultDiv = document.getElementById("run-result");
+    const resultMessage = document.getElementById("run-result-message");
+
+    // Helper function to handle form submission
+    function handleFormSubmit(form, loadingText) {
+      return function (e) {
+        e.preventDefault();
+
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalText = submitButton.innerHTML;
+        submitButton.disabled = true;
+        submitButton.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${loadingText}`;
+
+        fetch(form.action, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        })
+          .then((response) => response.json())
+          .then((data) => {
+            resultDiv.classList.remove(
+              "d-none",
+              "alert-info",
+              "alert-danger",
+              "alert-success"
+            );
+
+            if (data.error) {
+              resultDiv.classList.add("alert-danger");
+              resultMessage.textContent = "Error: " + data.error;
+            } else {
+              resultDiv.classList.add("alert-success");
+              if (data.new_papers_count > 0) {
+                resultMessage.textContent = `Found ${data.new_papers_count} new papers for "${data.search_name}". Check the New Papers page to view them.`;
+              } else {
+                resultMessage.textContent = `No new papers found for "${data.search_name}".`;
+              }
+            }
+
+            // Scroll to result
+            resultDiv.scrollIntoView({ behavior: "smooth" });
+
+            // Reset button
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalText;
+          })
+          .catch((error) => {
+            resultDiv.classList.remove("d-none", "alert-info", "alert-success");
+            resultDiv.classList.add("alert-danger");
+            resultMessage.textContent = "Error: " + error.message;
+
+            // Reset button
+            submitButton.disabled = false;
+            submitButton.innerHTML = originalText;
+          });
+      };
+    }
+
+    // Set up run search forms
+    runForms.forEach((form) => {
+      form.addEventListener("submit", handleFormSubmit(form, "Running..."));
+    });
+
+    // Set up test alert forms
+    testForms.forEach((form) => {
+      form.addEventListener("submit", handleFormSubmit(form, "Testing..."));
+    });
+  });
+</script>
+{% endblock %}

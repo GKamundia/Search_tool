@@ -94,7 +94,8 @@ class AlertService:
         if not paper_id:
             return False
             
-        existing = SearchResult.query.filter_by(
+        # Using SQLAlchemy 2.0 style query
+        existing = db.session.query(SearchResult).filter_by(
             saved_search_id=saved_search_id,
             database=database,
             paper_id=paper_id
@@ -153,7 +154,8 @@ class AlertService:
                       database: Optional[str] = None, 
                       limit: int = 50) -> List[SearchResult]:
         """Get new papers from the database"""
-        query = SearchResult.query.filter_by(is_new=True)
+        # Using SQLAlchemy 2.0 style query
+        query = db.session.query(SearchResult).filter_by(is_new=True)
         
         if saved_search_id:
             query = query.filter_by(saved_search_id=saved_search_id)
@@ -166,7 +168,8 @@ class AlertService:
     def mark_as_read(self, result_id: int) -> bool:
         """Mark a search result as read (not new)"""
         try:
-            result = SearchResult.query.get(result_id)
+            # Using SQLAlchemy 2.0 style query
+            result = db.session.get(SearchResult, result_id)
             if result:
                 result.is_new = False
                 db.session.commit()
@@ -186,8 +189,8 @@ class AlertService:
             'details': []
         }
         
-        # Get all active saved searches
-        query = SavedSearch.query.filter_by(active=True)
+        # Get all active saved searches using SQLAlchemy 2.0 style query
+        query = db.session.query(SavedSearch).filter_by(active=True)
         
         if frequency:
             query = query.filter_by(frequency=frequency)

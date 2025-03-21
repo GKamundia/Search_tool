@@ -20,8 +20,36 @@ class ArXivSearch:
         self.base_url = "http://export.arxiv.org/api/query"
         self.qb = qb or QueryBuilder()
         
-    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None) -> List[Dict]:
-        """Search arXiv with date filter"""
+    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None, test_mode: bool = False) -> List[Dict]:
+        """
+        Search arXiv with date filter
+        
+        Args:
+            query: Search query
+            since_date: Only return papers published after this date
+            test_mode: If True, return dummy test papers instead of making API calls
+            
+        Returns:
+            List of paper dictionaries
+        """
+        if test_mode:
+            # Return dummy test papers for testing
+            self.logger.info(f"Running arXiv search in TEST MODE for query: {query}")
+            return [
+                {
+                    'arxiv_id': f'test.{i}',
+                    'title': f'Test arXiv Paper {i}: {query}',
+                    'abstract': f'This is a test paper for query: {query}. It contains research findings related to the search terms.',
+                    'authors': 'Test Author A, Test Author B',
+                    'published': datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'),
+                    'pdf_url': f'https://example.com/arxiv/test{i}.pdf',
+                    'primary_category': 'cs.AI',
+                    'categories': ['cs.AI', 'cs.LG'],
+                    'journal_ref': 'Test Journal of Computer Science'
+                }
+                for i in range(1, 6)  # Generate 5 test papers
+            ]
+            
         if not since_date:
             return self.search(query)
             

@@ -62,8 +62,8 @@ class AlertScheduler:
         with self.app.app_context():
             self.logger.info(f"Running {frequency} alerts")
             
-            # Get all active saved searches with this frequency
-            searches = SavedSearch.query.filter_by(
+            # Get all active saved searches with this frequency using SQLAlchemy 2.0 style
+            searches = db.session.query(SavedSearch).filter_by(
                 frequency=frequency,
                 active=True
             ).all()
@@ -109,7 +109,8 @@ class AlertScheduler:
             dict: Result of the alert check
         """
         with self.app.app_context():
-            search = SavedSearch.query.get(search_id)
+            # Using SQLAlchemy 2.0 style query
+            search = db.session.get(SavedSearch, search_id)
             if not search:
                 self.logger.warning(f"Search with ID {search_id} not found")
                 return {'error': 'Search not found'}

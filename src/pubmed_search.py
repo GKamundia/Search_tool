@@ -16,8 +16,35 @@ class PubMedSearch:
         self.logger = logging.getLogger(__name__)
         self.existing_pmids = self._load_existing_pmids()
         
-    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None) -> List[Dict]:
-        """Search PubMed with date filter"""
+    def search_with_date_filter(self, query: str, since_date: Optional[datetime] = None, test_mode: bool = False) -> List[Dict]:
+        """
+        Search PubMed with date filter
+        
+        Args:
+            query: Search query
+            since_date: Only return papers published after this date
+            test_mode: If True, return dummy test papers instead of making API calls
+            
+        Returns:
+            List of paper dictionaries
+        """
+        if test_mode:
+            # Return dummy test papers for testing
+            self.logger.info(f"Running PubMed search in TEST MODE for query: {query}")
+            return [
+                {
+                    'pmid': f'test{i}',
+                    'title': f'Test PubMed Paper {i}: {query}',
+                    'abstract': f'This is a test paper for query: {query}. It contains medical research information related to the search terms.',
+                    'authors': 'Test Author 1, Test Author 2',
+                    'journal': 'Test Journal of Medicine',
+                    'pub_date': datetime.now().strftime('%Y-%m-%d'),
+                    'doi': f'10.1234/test.{i}',
+                    'url': f'https://example.com/pubmed/test{i}'
+                }
+                for i in range(1, 6)  # Generate 5 test papers
+            ]
+        
         if not since_date:
             return self.search(query)
             

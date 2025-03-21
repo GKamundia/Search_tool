@@ -183,5 +183,281 @@ def export_results():
     except FileNotFoundError:
         return "No results to export", 404
 
+@app.route('/save_search', methods=['POST'])
+def save_search():
+    """Save a search query for alerts"""
+    try:
+        # Get form data
+        name = request.form.get('search_name')
+        query = request.form.get('query')
+        databases = request.form.getlist('databases')
+        frequency = request.form.get('frequency', 'monthly')
+        email = request.form.get('email')
+        
+        # Get search parameters
+        params = {
+            'max_results': request.form.get('max_results', 50),
+            'start_year': request.form.get('start_year'),
+            'end_year': request.form.get('end_year')
+        }
+        
+        # Create new saved search
+        search = SavedSearch(
+            name=name,
+            query=query,
+            parameters=json.dumps(params),
+            databases=','.join(databases),
+            frequency=frequency,
+            active=True,
+            user_email=email
+        )
+        
+        db.session.add(search)
+        db.session.commit()
+        
+        app.logger.info(f"Search '{name}' saved successfully")
+        
+        # Redirect to saved searches page
+        return redirect(url_for('saved_searches'))
+        
+    except Exception as e:
+        app.logger.error(f"Error saving search: {str(e)}")
+        return render_template('error.html', error=f"Error saving search: {str(e)}")
+
+@app.route('/saved_searches')
+def saved_searches():
+    """View saved searches"""
+    # Using SQLAlchemy 2.0 style query
+    searches = db.session.query(SavedSearch).order_by(SavedSearch.created_at.desc()).all()
+    return render_template('saved_searches.html', searches=searches)
+
+@app.route('/new_papers')
+def new_papers():
+    """View new papers"""
+    # Get filter parameters
+    search_id = request.args.get('search_id')
+    database = request.args.get('database')
+    
+    # Get saved searches for filter dropdown using SQLAlchemy 2.0 style
+    saved_searches = db.session.query(SavedSearch).all()
+    
+    # Get new papers with filters using SQLAlchemy 2.0 style
+    query = db.session.query(SearchResult).filter_by(is_new=True)
+    
+    if search_id:
+        query = query.filter_by(saved_search_id=int(search_id))
+    
+    if database:
+        query = query.filter_by(database=database)
+    
+    # Order by found date (newest first)
+    papers = query.order_by(SearchResult.found_date.desc()).all()
+    
+    return render_template(
+        'new_papers.html',
+        papers=papers,
+        saved_searches=saved_searches,
+        selected_search_id=search_id,
+        selected_database=database
+    )
+
+@app.route('/run_search/<int:search_id>', methods=['POST'])
+def run_search(search_id):
+    """Manually run a saved search"""
+    try:
+        # Get the scheduler
+        scheduler = app.config.get('scheduler')
+        if not scheduler:
+            return jsonify({'error': 'Scheduler not initialized'}), 500
+        
+        # Run the search
+        result = scheduler.run_search_now(search_id)
+        
+        if 'error' in result:
+            return jsonify({'error': result['error']}), 400
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"Error running search: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/mark_as_read/<int:paper_id>', methods=['POST'])
+def mark_as_read(paper_id):
+    """Mark a paper as read"""
+    try:
+        result = alert_service.mark_as_read(paper_id)
+        if result:
+            return redirect(url_for('new_papers'))
+        else:
+            return render_template('error.html', error="Paper not found")
+    except Exception as e:
+        app.logger.error(f"Error marking paper as read: {str(e)}")
+        return render_template('error.html', error=f"Error: {str(e)}")
+
+@app.route('/delete_search/<int:search_id>', methods=['POST'])
+def delete_search(search_id):
+    """Delete a saved search"""
+    try:
+        # Using SQLAlchemy 2.0 style query
+        search = db.session.get(SavedSearch, search_id)
+        if search:
+            db.session.delete(search)
+            db.session.commit()
+            app.logger.info(f"Search '{search.name}' deleted successfully")
+        return redirect(url_for('saved_searches'))
+    except Exception as e:
+        app.logger.error(f"Error deleting search: {str(e)}")
+        return render_template('error.html', error=f"Error: {str(e)}")
+
+@app.route('/toggle_search/<int:search_id>', methods=['POST'])
+def toggle_search(search_id):
+    """Toggle a saved search active/inactive"""
+    try:
+        # Using SQLAlchemy 2.0 style query
+        search = db.session.get(SavedSearch, search_id)
+        if search:
+            search.active = not search.active
+            db.session.commit()
+            status = "activated" if search.active else "deactivated"
+            app.logger.info(f"Search '{search.name}' {status}")
+        return redirect(url_for('saved_searches'))
+    except Exception as e:
+        app.logger.error(f"Error toggling search: {str(e)}")
+        return render_template('error.html', error=f"Error: {str(e)}")
+
+@app.route('/test_alert/<int:search_id>', methods=['POST'])
+def test_alert(search_id):
+    """Run a test alert with dummy papers"""
+    try:
+        # Using SQLAlchemy 2.0 style query
+        search = db.session.get(SavedSearch, search_id)
+        if not search:
+            app.logger.warning(f"Search with ID {search_id} not found")
+            return jsonify({'error': 'Search not found'}), 404
+        
+        app.logger.info(f"Running test alert for search: {search.name}")
+        
+        # Get search parameters
+        params = search.get_parameters_dict()
+        databases = search.get_databases_list()
+        query = search.query
+        
+        # Initialize results
+        new_papers = []
+        all_papers = []
+        
+        # For each database in the saved search
+        for database in databases:
+            if database == 'pubmed':
+                # Create PubMed search with test mode
+                search_obj = PubMedSearch(max_results=params.get('max_results', 50))
+                # Get test papers
+                results = search_obj.search_with_date_filter(query, None, test_mode=True)
+                
+                # Process results
+                for paper in results:
+                    paper['database'] = 'pubmed'
+                    all_papers.append(paper)
+                    
+                    # Save to database
+                    try:
+                        # Extract paper details
+                        paper_id = paper.get('pmid')
+                        url = paper.get('url')
+                        
+                        # Create new search result
+                        result = SearchResult(
+                            saved_search_id=search.id,
+                            paper_id=paper_id,
+                            database=database,
+                            title=paper.get('title', ''),
+                            authors=paper.get('authors', ''),
+                            abstract=paper.get('abstract', ''),
+                            url=url,
+                            publication_date=datetime.now(),
+                            is_new=True,
+                            is_notified=False
+                        )
+                        
+                        db.session.add(result)
+                        new_papers.append(paper)
+                        
+                    except Exception as e:
+                        app.logger.error(f"Error saving test paper to database: {str(e)}")
+                
+            elif database == 'arxiv':
+                # Create ArXiv search with test mode
+                qb = QueryBuilder()
+                qb.add_term(query)
+                search_obj = ArXivSearch(max_results=params.get('max_results', 50), qb=qb)
+                # Get test papers
+                results = search_obj.search_with_date_filter(query, None, test_mode=True)
+                
+                # Process results
+                for paper in results:
+                    paper['database'] = 'arxiv'
+                    all_papers.append(paper)
+                    
+                    # Save to database
+                    try:
+                        # Extract paper details
+                        paper_id = paper.get('arxiv_id')
+                        url = paper.get('pdf_url')
+                        
+                        # Create new search result
+                        result = SearchResult(
+                            saved_search_id=search.id,
+                            paper_id=paper_id,
+                            database=database,
+                            title=paper.get('title', ''),
+                            authors=paper.get('authors', ''),
+                            abstract=paper.get('abstract', ''),
+                            url=url,
+                            publication_date=datetime.now(),
+                            is_new=True,
+                            is_notified=False
+                        )
+                        
+                        db.session.add(result)
+                        new_papers.append(paper)
+                        
+                    except Exception as e:
+                        app.logger.error(f"Error saving test paper to database: {str(e)}")
+        
+        # Commit all changes
+        db.session.commit()
+        
+        # Send email notification if user email is set
+        if new_papers and search.user_email:
+            email_service.send_new_papers_notification(
+                search.user_email,
+                search,
+                new_papers
+            )
+            app.logger.info(f"Sent test email notification to {search.user_email}")
+        
+        # Return success response
+        return jsonify({
+            'success': True,
+            'search_name': search.name,
+            'new_papers_count': len(new_papers),
+            'message': 'Test alert completed successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error running test alert: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(debug=True)
+    # Initialize scheduler
+    scheduler = AlertScheduler(app)
+    scheduler.start()
+    app.config['scheduler'] = scheduler
+    
+    try:
+        app.run(debug=True)
+    finally:
+        # Ensure scheduler is shut down when app exits
+        scheduler.stop()
