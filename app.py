@@ -150,7 +150,6 @@ async def api_search():
         if 'pubmed' in selected_dbs:
             pubmed_search = PubMedSearch(max_results=max_results)
             results['pubmed'] = await asyncio.to_thread(pubmed_search.search, query_str)
-            pubmed_search.save_to_csv(results['pubmed'], 'data/pubmed_results.csv')
         
         if 'gim' in selected_dbs:
             async with GIMSearch(max_results=max_results) as gim_search:
@@ -182,10 +181,6 @@ async def api_search():
         if 'arxiv' in selected_dbs:
             arxiv_search = ArXivSearch(max_results=max_results, qb=qb)
             results['arxiv'] = await asyncio.to_thread(arxiv_search.search, query_str)
-            if results['arxiv']:
-                os.makedirs('data', exist_ok=True)
-                arxiv_search.save_to_csv(results['arxiv'], 'data/arxiv_results.csv')
-                app.logger.info(f"Saved {len(results['arxiv'])} arXiv results to CSV")
 
         return jsonify({
             'query': query_str,
@@ -234,7 +229,6 @@ async def index():
             if 'pubmed' in selected_dbs:
                 pubmed_search = PubMedSearch(max_results=max_results)
                 results['pubmed'] = await asyncio.to_thread(pubmed_search.search, query_str)
-                pubmed_search.save_to_csv(results['pubmed'], 'data/pubmed_results.csv')
             
             if 'gim' in selected_dbs:
                 async with GIMSearch(max_results=max_results) as gim_search:
@@ -266,10 +260,6 @@ async def index():
             if 'arxiv' in selected_dbs:
                 arxiv_search = ArXivSearch(max_results=max_results, qb=qb)
                 results['arxiv'] = await asyncio.to_thread(arxiv_search.search, query_str)
-                if results['arxiv']:
-                    os.makedirs('data', exist_ok=True)
-                    arxiv_search.save_to_csv(results['arxiv'], 'data/arxiv_results.csv')
-                    app.logger.info(f"Saved {len(results['arxiv'])} arXiv results to CSV")
 
             # Log the search
             app.logger.info(
