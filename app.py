@@ -73,6 +73,86 @@ def api_status():
         'database_status': 'connected'
     })
 
+@app.route('/api/search', methods=['POST'])
+async def api_search():
+    try:
+        # Extract form data
+        terms = request.form.getlist('term')
+        operators = request.form.getlist('boolean_operator')
+        fields = request.form.getlist('field')
+        selected_dbs = request.form.getlist('databases')
+        max_results = int(request.form.get('max_results', 50))
+        start_year = request.form.get('start_year')
+        end_year = request.form.get('end_year')
+        
+        # Build query with proper PubMed syntax
+        qb = QueryBuilder()
+        query_parts = []
+        for i, term in enumerate(terms):
+            if term.strip():
+                field = fields[i] if i < len(fields) else ''
+                query_parts.append(qb.add_term(term, field).build())
+                if i < len(operators):
+                    op = operators[i]
+                    query_parts.append(op)
+
+        # Add date filter if provided
+        if start_year and end_year:
+            qb.date_range(int(start_year), int(end_year))
+
+        # Execute searches concurrently
+        query_str = qb.build()
+        results = {'pubmed': [], 'gim': [], 'arxiv': []}
+        
+        if 'pubmed' in selected_dbs:
+            pubmed_search = PubMedSearch(max_results=max_results)
+            results['pubmed'] = await asyncio.to_thread(pubmed_search.search, query_str)
+            pubmed_search.save_to_csv(results['pubmed'], 'data/pubmed_results.csv')
+        
+        if 'gim' in selected_dbs:
+            async with GIMSearch(max_results=max_results) as gim_search:
+                results['gim'] = await gim_search.search(query_str)
+                if results['gim']:
+                    # Create data directory if it doesn't exist
+                    os.makedirs('data', exist_ok=True)
+                    
+                    # Ensure all results have the same fields
+                    for result in results['gim']:
+                        # Add new fields if they don't exist
+                        if 'publication_details' not in result:
+                            result['publication_details'] = ""
+                        if 'database_info' not in result:
+                            result['database_info'] = ""
+                        if 'subjects' not in result:
+                            result['subjects'] = ""
+                        if 'doc_id' not in result:
+                            result['doc_id'] = ""
+                    
+                    # Save to CSV with overwrite mode to ensure clean results
+                    pd.DataFrame(results['gim']).to_csv(
+                        'data/gim_results.csv', 
+                        mode='w',  # Use write mode instead of append
+                        index=False
+                    )
+                    app.logger.info(f"Saved {len(results['gim'])} GIM results to CSV")
+        
+        if 'arxiv' in selected_dbs:
+            arxiv_search = ArXivSearch(max_results=max_results, qb=qb)
+            results['arxiv'] = await asyncio.to_thread(arxiv_search.search, query_str)
+            if results['arxiv']:
+                os.makedirs('data', exist_ok=True)
+                arxiv_search.save_to_csv(results['arxiv'], 'data/arxiv_results.csv')
+                app.logger.info(f"Saved {len(results['arxiv'])} arXiv results to CSV")
+
+        return jsonify({
+            'query': query_str,
+            'results': results
+        })
+        
+    except Exception as e:
+        app.logger.error(f"API search error: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/', methods=['GET', 'POST'])
 async def index():
     current_year = datetime.datetime.now().year

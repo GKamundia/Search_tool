@@ -4,45 +4,30 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:500
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
-// Request interceptor for API calls
+// Request interceptor
 api.interceptors.request.use(
   async config => {
-    // You can add auth tokens here if needed
+    // For FormData, let axios set the content-type with boundary
+    if (config.data instanceof FormData) {
+      config.headers['Content-Type'] = undefined;
+    }
     return config;
   },
   error => {
-    Promise.reject(error);
-  }
-);
-
-// Response interceptor for API calls
-api.interceptors.response.use(
-  response => response,
-  async error => {
-    const originalRequest = error.config;
-    
-    // Handle different error types here
-    if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
-      console.error('API error:', error.response.status, error.response.data);
-    } else if (error.request) {
-      // The request was made but no response was received
-      console.error('API request error:', error.request);
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      console.error('API setup error:', error.message);
-    }
-    
     return Promise.reject(error);
   }
 );
 
+// Response interceptor
+api.interceptors.response.use(
+  response => response,
+  async error => {
+    console.error('API error:', error);
+    return Promise.reject(error);
+  }
+);
 
 export default api;
 
