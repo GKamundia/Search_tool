@@ -10,11 +10,13 @@ const SearchPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<SearchResults | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [currentSearchParams, setCurrentSearchParams] = useState<SearchParams | null>(null);
 
   const handleSearch = async (params: SearchParams) => {
     try {
       setLoading(true);
       setError(null);
+      setCurrentSearchParams(params);
       const response = await searchService.performSearch(params);
       setResults(response.results);
       setSearchQuery(response.query || params.terms.join(' ')); 
@@ -46,10 +48,16 @@ const SearchPage: React.FC = () => {
         </Alert>
       )}
       
-      {results && !loading && (
+      {results && !loading && currentSearchParams && (
         <ResultsContainer 
           results={results} 
-          query={searchQuery} 
+          query={searchQuery}
+          searchParams={{
+            databases: currentSearchParams.databases,
+            maxResults: currentSearchParams.maxResults,
+            startYear: currentSearchParams.startYear,
+            endYear: currentSearchParams.endYear
+          }}
         />
       )}
     </Box>

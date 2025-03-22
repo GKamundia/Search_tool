@@ -6,7 +6,7 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Request interceptor
+// Request interceptor for API calls
 api.interceptors.request.use(
   async config => {
     // For FormData, let axios set the content-type with boundary
@@ -20,7 +20,7 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor
+// Response interceptor for API calls
 api.interceptors.response.use(
   response => response,
   async error => {

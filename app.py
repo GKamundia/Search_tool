@@ -18,6 +18,8 @@ from src.scheduler import AlertScheduler
 from dotenv import load_dotenv
 import datetime
 from logging.handlers import RotatingFileHandler
+from sqlalchemy import inspect
+from flask_migrate import Migrate
 
 load_dotenv()
 
@@ -63,6 +65,47 @@ db = init_db(app)
 alert_service = AlertService(app)
 email_service = EmailService(app)
 
+migrate = Migrate(app, db)
+
+def api_error(message, status_code=400):
+    """Standard API error response"""
+    return jsonify({
+        'error': message,
+        'status': 'error',
+        'timestamp': datetime.datetime.now().isoformat()
+    }), status_code
+
+def validate_models():
+    """Validate that database tables match SQLAlchemy models"""
+    app.logger.info("Validating database schema...")
+    inspector = inspect(db.engine)
+    
+    # Check SearchResult model
+    if 'search_results' in inspector.get_table_names():
+        columns = {col['name'] for col in inspector.get_columns('search_results')}
+        required_columns = {'id', 'saved_search_id', 'paper_id', 'database', 
+                           'title', 'authors', 'abstract', 'url', 
+                           'publication_date', 'found_date', 'is_new', 'is_read'}
+        
+        missing = required_columns - columns
+        if missing:
+            app.logger.warning(f"Missing columns in search_results table: {missing}")
+            return False
+    
+    # Check SavedSearch model
+    if 'saved_searches' in inspector.get_table_names():
+        columns = {col['name'] for col in inspector.get_columns('saved_searches')}
+        required_columns = {'id', 'name', 'query', 'parameters', 'databases', 
+                           'frequency', 'last_check_timestamp', 'active', 
+                           'user_email', 'created_at'}
+        
+        missing = required_columns - columns
+        if missing:
+            app.logger.warning(f"Missing columns in saved_searches table: {missing}")
+            return False
+    
+    app.logger.info("Database schema validation successful")
+    return True
 
 # Add a sample API endpoint for testing
 @app.route('/api/status', methods=['GET'])
@@ -549,11 +592,355 @@ def test_alert(search_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/saved_searches', methods=['GET'])
+def api_saved_searches():
+    """API endpoint to get saved searches"""
+    try:
+        searches = db.session.query(SavedSearch).order_by(SavedSearch.created_at.desc()).all()
+        
+        # Convert to list of dicts for JSON serialization
+        search_list = [{
+            'id': search.id,
+            'name': search.name,
+            'query': search.query,
+            'databases': search.databases,
+            'frequency': search.frequency,
+            'last_check_timestamp': search.last_check_timestamp.isoformat() if search.last_check_timestamp else None,
+            'active': search.active,
+            'user_email': search.user_email,
+            'created_at': search.created_at.isoformat() if search.created_at else None
+        } for search in searches]
+        
+        return jsonify(search_list)
+    except Exception as e:
+        app.logger.error(f"API error getting saved searches: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/save_search', methods=['POST'])
+def api_save_search():
+    """API endpoint to save a search query for alerts"""
+    try:
+        # Get form data
+        name = request.form.get('search_name')
+        query = request.form.get('query')
+        databases = request.form.getlist('databases')
+        frequency = request.form.get('frequency', 'monthly')
+        email = request.form.get('email')
+        
+        # Get search parameters
+        params = {
+            'max_results': request.form.get('max_results', 50),
+            'start_year': request.form.get('start_year'),
+            'end_year': request.form.get('end_year')
+        }
+        
+        # Validation
+        if not name:
+            return jsonify({'error': 'Search name is required'}), 400
+        
+        if not query:
+            return jsonify({'error': 'Query is required'}), 400
+        
+        if not databases:
+            return jsonify({'error': 'At least one database must be selected'}), 400
+        
+        # Create new saved search
+        search = SavedSearch(
+            name=name,
+            query=query,
+            parameters=json.dumps(params),
+            databases=','.join(databases),
+            frequency=frequency,
+            active=True,
+            user_email=email
+        )
+        
+        db.session.add(search)
+        db.session.commit()
+        
+        app.logger.info(f"API: Search '{name}' saved successfully")
+        
+        # Return the saved search data
+        return jsonify({
+            'id': search.id,
+            'name': search.name,
+            'query': search.query,
+            'databases': search.databases,
+            'frequency': search.frequency,
+            'active': search.active,
+            'user_email': search.user_email,
+            'created_at': search.created_at.isoformat() if search.created_at else None
+        })
+        
+    except Exception as e:
+        app.logger.error(f"API error saving search: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/delete_search/<int:search_id>', methods=['POST'])
+def api_delete_search(search_id):
+    """API endpoint to delete a saved search"""
+    try:
+        search = db.session.get(SavedSearch, search_id)
+        if not search:
+            return jsonify({'error': 'Search not found'}), 404
+            
+        db.session.delete(search)
+        db.session.commit()
+        app.logger.info(f"API: Search '{search.name}' deleted successfully")
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f"API error deleting search: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/toggle_search/<int:search_id>', methods=['POST'])
+def api_toggle_search(search_id):
+    """API endpoint to toggle a saved search active/inactive"""
+    try:
+        search = db.session.get(SavedSearch, search_id)
+        if not search:
+            return jsonify({'error': 'Search not found'}), 404
+            
+        search.active = not search.active
+        db.session.commit()
+        status = "activated" if search.active else "deactivated"
+        app.logger.info(f"API: Search '{search.name}' {status}")
+        
+        return jsonify({
+            'id': search.id,
+            'name': search.name,
+            'active': search.active
+        })
+    except Exception as e:
+        app.logger.error(f"API error toggling search: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/run_search/<int:search_id>', methods=['POST'])
+def api_run_search(search_id):
+    """API endpoint to manually run a saved search"""
+    try:
+        # Get the scheduler
+        scheduler = app.config.get('scheduler')
+        if not scheduler:
+            return jsonify({'error': 'Scheduler not initialized'}), 500
+        
+        # Get the search
+        search = db.session.get(SavedSearch, search_id)
+        if not search:
+            return jsonify({'error': 'Search not found'}), 404
+        
+        # Run the search
+        result = scheduler.run_search_now(search_id)
+        
+        if 'error' in result:
+            return jsonify({'error': result['error']}), 400
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        app.logger.error(f"API error running search: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/test_alert/<int:search_id>', methods=['POST'])
+def api_test_alert(search_id):
+    """API endpoint to run a test alert with dummy papers"""
+    try:
+        # Get the search
+        search = db.session.get(SavedSearch, search_id)
+        if not search:
+            return jsonify({'error': 'Search not found'}), 404
+        
+        app.logger.info(f"API: Running test alert for search: {search.name}")
+        
+        # Get search parameters
+        params = search.get_parameters_dict()
+        databases = search.get_databases_list()
+        query = search.query
+        
+        # Initialize results
+        new_papers = []
+        
+        # For each database in the saved search
+        for database in databases:
+            if database == 'pubmed':
+                # Create PubMed search with test mode
+                search_obj = PubMedSearch(max_results=params.get('max_results', 50))
+                # Get test papers (3 for test)
+                results = search_obj.search_with_date_filter(query, None, test_mode=True)[:3]
+                
+                # Process results
+                for paper in results:
+                    # Save to database
+                    try:
+                        # Create new search result
+                        result = SearchResult(
+                            saved_search_id=search.id,
+                            paper_id=paper.get('pmid', f"test-{len(new_papers)}"),
+                            database=database,
+                            title=paper.get('title', 'Test Paper'),
+                            authors=', '.join(paper.get('authors', ['Test Author'])),
+                            abstract=paper.get('abstract', 'Test abstract'),
+                            url=paper.get('url', 'https://example.com'),
+                            publication_date=datetime.datetime.now(),
+                            is_new=True,
+                            is_read=False,
+                            found_date=datetime.datetime.now()
+                        )
+                        
+                        db.session.add(result)
+                        new_papers.append(paper)
+                    except Exception as e:
+                        app.logger.error(f"Error saving test paper: {str(e)}")
+            
+            elif database == 'arxiv':
+                # Create ArXiv search with test mode
+                qb = QueryBuilder()
+                qb.add_term(query)
+                search_obj = ArXivSearch(max_results=params.get('max_results', 50), qb=qb)
+                # Get test papers (3 for test)
+                results = search_obj.search_with_date_filter(query, None, test_mode=True)[:3]
+                
+                # Process results
+                for paper in results:
+                    # Save to database
+                    try:
+                        # Create new search result
+                        result = SearchResult(
+                            saved_search_id=search.id,
+                            paper_id=paper.get('arxiv_id', f"test-{len(new_papers)}"),
+                            database=database,
+                            title=paper.get('title', 'Test Paper'),
+                            authors=paper.get('authors', 'Test Author'),
+                            abstract=paper.get('abstract', 'Test abstract'),
+                            url=paper.get('pdf_url', 'https://example.com'),
+                            publication_date=datetime.datetime.now(),
+                            is_new=True,
+                            is_read=False,
+                            found_date=datetime.datetime.now()
+                        )
+                        
+                        db.session.add(result)
+                        new_papers.append(paper)
+                    except Exception as e:
+                        app.logger.error(f"Error saving test paper: {str(e)}")
+                        
+        # Add a test entry for GIM if needed
+        if 'gim' in databases:
+            for i in range(3):  # Add 3 test papers
+                result = SearchResult(
+                    saved_search_id=search.id,
+                    paper_id=f"test-gim-{i}",
+                    database='gim',
+                    title=f"Test GIM Paper {i+1}",
+                    authors="Test Author 1, Test Author 2",
+                    abstract="This is a test paper abstract for GIM database.",
+                    url="https://example.com/gim",
+                    publication_date=datetime.datetime.now(),
+                    is_new=True,
+                    is_read=False,
+                    found_date=datetime.datetime.now()
+                )
+                db.session.add(result)
+                new_papers.append({"title": result.title, "authors": result.authors})
+        
+        # Commit all changes
+        db.session.commit()
+        
+        # Send email notification if user email is set
+        if new_papers and search.user_email:
+            try:
+                email_service.send_new_papers_notification(
+                    search.user_email,
+                    search,
+                    new_papers
+                )
+                app.logger.info(f"API: Sent test email notification to {search.user_email}")
+            except Exception as e:
+                app.logger.error(f"API: Error sending test email: {str(e)}")
+        
+        # Return success response
+        return jsonify({
+            'success': True,
+            'search_name': search.name,
+            'new_papers_count': len(new_papers),
+            'message': 'Test alert completed successfully'
+        })
+        
+    except Exception as e:
+        app.logger.error(f"API error running test alert: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/new_papers', methods=['GET'])
+def api_new_papers():
+    """API endpoint to get new papers"""
+    try:
+        # Get filter parameters
+        search_id = request.args.get('search_id')
+        database = request.args.get('database')
+        
+        # Get new papers with filters
+        query = db.session.query(SearchResult).filter_by(is_new=True)
+        
+        if search_id:
+            query = query.filter_by(saved_search_id=int(search_id))
+        
+        if database:
+            query = query.filter_by(database=database)
+        
+        # Order by found date (newest first)
+        papers = query.order_by(SearchResult.found_date.desc()).all()
+        
+        # Convert to list of dicts for JSON serialization
+        paper_list = [{
+            'id': paper.id,
+            'title': paper.title,
+            'authors': paper.authors,
+            'abstract': paper.abstract,
+            'url': paper.url,
+            'database': paper.database,
+            'publication_date': paper.publication_date.isoformat() if paper.publication_date else None,
+            'saved_search_id': paper.saved_search_id,
+            'paper_id': paper.paper_id,
+            'is_new': paper.is_new,
+            'is_read': paper.is_read
+        } for paper in papers]
+        
+        return jsonify(paper_list)
+    except Exception as e:
+        app.logger.error(f"API error getting new papers: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/mark_as_read/<int:paper_id>', methods=['POST'])
+def api_mark_as_read(paper_id):
+    """API endpoint to mark a paper as read"""
+    try:
+        paper = db.session.query(SearchResult).get(paper_id)
+        if not paper:
+            return jsonify({'error': 'Paper not found'}), 404
+            
+        # Check if the attribute exists before setting it
+        if hasattr(paper, 'is_read'):
+            paper.is_read = True
+        paper.is_new = False
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        app.logger.error(f"API error marking paper as read: {str(e)}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     # Initialize scheduler
     scheduler = AlertScheduler(app)
     scheduler.start()
     app.config['scheduler'] = scheduler
+    
+    with app.app_context():
+        validate_models()
     
     try:
         app.run(debug=True)

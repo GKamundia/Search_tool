@@ -58,6 +58,7 @@ class SearchResult(db.Model):
     found_date = db.Column(db.DateTime, default=datetime.utcnow)
     is_new = db.Column(db.Boolean, default=True)
     is_notified = db.Column(db.Boolean, default=False)
+    is_read = db.Column(db.Boolean, default=False)  # Add this column
     
     def __repr__(self):
         return f"<SearchResult {self.id}: {self.title[:30]}...>"
