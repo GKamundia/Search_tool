@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import json
 from flask import Flask, render_template, request, send_file, redirect, url_for, jsonify, flash
+from flask_cors import CORS
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 from src.gim_search import GIMSearch
@@ -36,6 +37,8 @@ logging.basicConfig(
     ]
 )
 
+
+
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', 'dev-secret')
 
@@ -47,12 +50,28 @@ app.config['MAIL_PASSWORD'] = os.getenv('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.getenv('MAIL_DEFAULT_SENDER', 'noreply@example.com')
 app.config['MAIL_USE_TLS'] = os.getenv('MAIL_USE_TLS', 'False').lower() == 'true'
 
+
+# Allow CORS for development
+CORS(app, resources={
+    r"/api/*": {"origins": "http://localhost:3000"}
+})
+
 # Initialize database
 db = init_db(app)
 
 # Initialize services
 alert_service = AlertService(app)
 email_service = EmailService(app)
+
+
+# Add a sample API endpoint for testing
+@app.route('/api/status', methods=['GET'])
+def api_status():
+    return jsonify({
+        'status': 'online',
+        'version': '1.0.0',
+        'database_status': 'connected'
+    })
 
 @app.route('/', methods=['GET', 'POST'])
 async def index():

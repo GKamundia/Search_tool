@@ -9,3 +9,20 @@ __pycache__/
 data/
 logs/
 *.log
+
+# Node.js / React
+/research-search-frontend/node_modules
+/research-search-frontend/build
+/research-search-frontend/.pnp
+/research-search-frontend/.pnp.js
+/research-search-frontend/coverage
+/research-search-frontend/.env.local
+/research-search-frontend/.env.development.local
+/research-search-frontend/.env.test.local
+/research-search-frontend/.env.production.local
+/research-search-frontend/npm-debug.log*
+/research-search-frontend/yarn-debug.log*
+/research-search-frontend/yarn-error.log*
+
+# TypeScript specific
+/research-search-frontend/*.tsbuildinfo
